@@ -7,6 +7,10 @@
 //
 
 #import "AppDelegate.h"
+#import "Constants.h"
+#import "HomeViewController.h"
+#import "ChatMessagesViewController.h"
+
 
 @interface AppDelegate ()
 
@@ -14,11 +18,376 @@
 
 @implementation AppDelegate
 
+- (void)application:(UIApplication *)application didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)deviceToken
+{
+    
+    NSString *token = [[deviceToken description] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"<>"]];
+    
+    NSString *finalToken = [token stringByReplacingOccurrencesOfString:@" " withString:@""];
+    [[NSUserDefaults standardUserDefaults] setObject:finalToken forKey:USER_PUSH_NOTIFICATION_PIN];
+    [[NSUserDefaults standardUserDefaults]synchronize];
+    
+    if(finalToken && self.userData.isUserLoggedIn)
+        [[[self.userData.ref child:@"/users/"] child:self.userData.user.uid] updateChildValues:@{@"pushPin" : finalToken}];
+    
+    
+}
 
-- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
-    // Override point for customization after application launch.
+- (void)application:(UIApplication *)application didFailToRegisterForRemoteNotificationsWithError:(NSError *)error
+{
+    NSLog(@"Failed to get token, error: %@", error);
+}
+
+
+
+- (void)application:(UIApplication *)application didReceiveRemoteNotification:(NSDictionary *)userInfo fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler
+{
+    UIApplicationState state = application.applicationState;
+    
+    //[[NSNotificationCenter defaultCenter] postNotificationName:ADLoadDataNotification object:nil userInfo:nil];
+    
+    //BOOL sendLocalNotification = false;
+    
+    if(state == UIApplicationStateActive)
+    {
+        
+        NSString *title = @"";
+        
+        NSString *alertType = [[userInfo valueForKey:@"aps"]valueForKey:@"alertType"];
+        UINavigationController *navController = (UINavigationController *)self.window.rootViewController;
+        
+        if([alertType intValue] != 2 && ![navController.visibleViewController isKindOfClass:[ChatMessagesViewController class]])
+        {
+            switch ([alertType intValue]) {
+                case 1: title = @"New Product Posted";
+                    break;
+                case 2: title = @"Chat Notification";
+                    break;
+                case 3: title = @"New Follower Notification";
+                    break;
+                case 4: title = @"Product Posted Notification";
+                    break;
+                case 5: title = @"Product Expired Notificaiton";
+                    break;
+                case 6: title = @"Product Review Notification";
+                    break;
+            }
+            
+            UIAlertController *alertController = [UIAlertController
+                                                  alertControllerWithTitle:title
+                                                  message:[[userInfo valueForKey:@"aps"]valueForKey:@"alert"]
+                                                  preferredStyle:UIAlertControllerStyleAlert];
+            
+            UIAlertAction *okAction = [UIAlertAction
+                                       actionWithTitle:@"Dismiss"
+                                       style:UIAlertActionStyleDefault
+                                       handler:^(UIAlertAction *action)
+                                       {
+                                           
+                                       }];
+            [alertController addAction: okAction];
+            
+            UIAlertAction *productAction;
+            UIAlertAction *chatAction;
+            UIAlertAction *expiredAction;
+            UIAlertAction *reviewAction;
+            
+            
+            
+            
+            if([alertType intValue] == 1)
+            {
+                productAction = [UIAlertAction
+                                 actionWithTitle:@"View Product"
+                                 style:UIAlertActionStyleDefault
+                                 handler:^(UIAlertAction *action)
+                                 {
+                                     [[NSUserDefaults standardUserDefaults] setObject:@"1" forKey:SCREEN_TO_LOAD];
+                                     [[NSUserDefaults standardUserDefaults]synchronize];
+                                     [[NSUserDefaults standardUserDefaults] setObject:[[userInfo valueForKey:@"aps"] valueForKey:@"productID"] forKey:@"productID"];
+                                     [[NSUserDefaults standardUserDefaults]synchronize];
+                                     [[NSUserDefaults standardUserDefaults] setObject:[[userInfo valueForKey:@"aps"] valueForKey:@"fromUserID"] forKey:@"fromUserID"];
+                                     [[NSUserDefaults standardUserDefaults]synchronize];
+                                     
+                                     [[NSUserDefaults standardUserDefaults] setObject:@"1" forKey:ALERT_RECIEVED];
+                                     [[NSUserDefaults standardUserDefaults]synchronize];
+                                     
+                                    
+                                     
+                                     if([navController.visibleViewController isKindOfClass:[HomeViewController class]])
+                                         [[NSNotificationCenter defaultCenter] postNotificationName:@"ProcessNotification" object:nil userInfo:nil];
+                                     else
+                                         [navController.visibleViewController.navigationController popToRootViewControllerAnimated:NO];
+                                     
+                                 }];
+                [alertController addAction: productAction];
+                 [self.window.rootViewController presentViewController:alertController animated:YES completion:nil];
+            }
+            else if ([alertType intValue] == 2)
+            {
+        
+                
+                    chatAction = [UIAlertAction
+                                  actionWithTitle:@"View Message"
+                                  style:UIAlertActionStyleDefault
+                                  handler:^(UIAlertAction *action)
+                                  {
+                                      NSString *name = @"";
+                                      [[NSUserDefaults standardUserDefaults] setObject:@"2" forKey:SCREEN_TO_LOAD];
+                                      [[NSUserDefaults standardUserDefaults]synchronize];
+                                      [[NSUserDefaults standardUserDefaults] setObject:[[userInfo valueForKey:@"aps"] valueForKey:@"fromUserID"] forKey:@"fromUserID"];
+                                      [[NSUserDefaults standardUserDefaults]synchronize];
+                                      [[NSUserDefaults standardUserDefaults] setObject:[[userInfo valueForKey:@"aps"] valueForKey:@"userType"] forKey:@"userType"];
+                                      [[NSUserDefaults standardUserDefaults]synchronize];
+                                      
+                                      
+                                      
+                                      name = [[userInfo valueForKey:@"aps"]valueForKey:@"alert"];
+                                      name = [name stringByReplacingOccurrencesOfString: @" has sent you a message." withString:@""];
+                                      
+                                      [[NSUserDefaults standardUserDefaults] setObject:name forKey:@"fromUserIDName"];
+                                      [[NSUserDefaults standardUserDefaults]synchronize];
+                                      [[NSUserDefaults standardUserDefaults] setObject:@"1" forKey:ALERT_RECIEVED];
+                                      [[NSUserDefaults standardUserDefaults]synchronize];
+                                      
+                                      
+                                      if([navController.visibleViewController isKindOfClass:[HomeViewController class]])
+                                          [[NSNotificationCenter defaultCenter] postNotificationName:@"ProcessNotification" object:nil userInfo:nil];
+                                      else
+                                          [navController.visibleViewController.navigationController popToRootViewControllerAnimated:NO];
+                                  }];
+                    
+                    [alertController addAction: chatAction];
+                     [self.window.rootViewController presentViewController:alertController animated:YES completion:nil];
+                
+            }
+            else if([alertType intValue] == 5)
+            {
+                expiredAction = [UIAlertAction
+                              actionWithTitle:@"View Expired Products"
+                              style:UIAlertActionStyleDefault
+                              handler:^(UIAlertAction *action)
+                              {
+                                
+                                  [[NSUserDefaults standardUserDefaults] setObject:@"4" forKey:SCREEN_TO_LOAD];
+                                  [[NSUserDefaults standardUserDefaults]synchronize];
+                                  
+                                 
+                                  [[NSUserDefaults standardUserDefaults] setObject:@"1" forKey:ALERT_RECIEVED];
+                                  [[NSUserDefaults standardUserDefaults]synchronize];
+                                  
+                                  
+                                  if([navController.visibleViewController isKindOfClass:[HomeViewController class]])
+                                      [[NSNotificationCenter defaultCenter] postNotificationName:@"ProcessNotification" object:nil userInfo:nil];
+                                  else
+                                      [navController.visibleViewController.navigationController popToRootViewControllerAnimated:NO];
+                              }];
+                
+                [alertController addAction: expiredAction];
+                [self.window.rootViewController presentViewController:alertController animated:YES completion:nil];
+            }
+            else if([alertType intValue] == 6)
+            {
+                reviewAction = [UIAlertAction
+                                 actionWithTitle:@"View Farm Reviews"
+                                 style:UIAlertActionStyleDefault
+                                 handler:^(UIAlertAction *action)
+                                 {
+                                     
+                                     [[NSUserDefaults standardUserDefaults] setObject:@"3" forKey:SCREEN_TO_LOAD];
+                                     [[NSUserDefaults standardUserDefaults]synchronize];
+                                     
+                                     
+                                     [[NSUserDefaults standardUserDefaults] setObject:@"1" forKey:ALERT_RECIEVED];
+                                     [[NSUserDefaults standardUserDefaults]synchronize];
+                                     
+                                     
+                                     if([navController.visibleViewController isKindOfClass:[HomeViewController class]])
+                                         [[NSNotificationCenter defaultCenter] postNotificationName:@"ProcessNotification" object:nil userInfo:nil];
+                                     else
+                                         [navController.visibleViewController.navigationController popToRootViewControllerAnimated:NO];
+                                 }];
+                
+                [alertController addAction: reviewAction];
+                [self.window.rootViewController presentViewController:alertController animated:YES completion:nil];
+            }
+            else
+                 [self.window.rootViewController presentViewController:alertController animated:YES completion:nil];
+        }
+        
+    
+       
+  
+        
+    }
+    else
+    {
+        
+        
+        
+        NSString *alertType = [[userInfo valueForKey:@"aps"]valueForKey:@"alertType"];
+        NSString *name = @"";
+        switch ([alertType intValue]) {
+            case 1:
+                [[NSUserDefaults standardUserDefaults] setObject:@"1" forKey:SCREEN_TO_LOAD];
+                [[NSUserDefaults standardUserDefaults]synchronize];
+                [[NSUserDefaults standardUserDefaults] setObject:[[userInfo valueForKey:@"aps"] valueForKey:@"productID"] forKey:@"productID"];
+                [[NSUserDefaults standardUserDefaults]synchronize];
+                [[NSUserDefaults standardUserDefaults] setObject:[[userInfo valueForKey:@"aps"] valueForKey:@"fromUserID"] forKey:@"fromUserID"];
+                [[NSUserDefaults standardUserDefaults]synchronize];
+                break;
+            case 2:
+                [[NSUserDefaults standardUserDefaults] setObject:@"2" forKey:SCREEN_TO_LOAD];
+                [[NSUserDefaults standardUserDefaults]synchronize];
+                [[NSUserDefaults standardUserDefaults] setObject:[[userInfo valueForKey:@"aps"] valueForKey:@"fromUserID"] forKey:@"fromUserID"];
+                [[NSUserDefaults standardUserDefaults]synchronize];
+                [[NSUserDefaults standardUserDefaults] setObject:[[userInfo valueForKey:@"aps"] valueForKey:@"userType"] forKey:@"userType"];
+                [[NSUserDefaults standardUserDefaults]synchronize];
+                
+        
+                
+                name = [[userInfo valueForKey:@"aps"]valueForKey:@"alert"];
+                name = [name stringByReplacingOccurrencesOfString: @" has sent you a message." withString:@""];
+                
+                [[NSUserDefaults standardUserDefaults] setObject:name forKey:@"fromUserIDName"];
+                [[NSUserDefaults standardUserDefaults]synchronize];
+                 
+                break;
+            case 3:
+                break;
+            case 4:
+                break;
+            case 5://show expired Products
+                [[NSUserDefaults standardUserDefaults] setObject:@"4" forKey:SCREEN_TO_LOAD];
+                [[NSUserDefaults standardUserDefaults]synchronize];
+                break;
+            case 6://show Reviews
+                [[NSUserDefaults standardUserDefaults] setObject:@"3" forKey:SCREEN_TO_LOAD];
+                [[NSUserDefaults standardUserDefaults]synchronize];
+                break;
+                
+        }
+        
+            [[NSUserDefaults standardUserDefaults] setObject:@"1" forKey:ALERT_RECIEVED];
+            [[NSUserDefaults standardUserDefaults]synchronize];
+        
+            UINavigationController *navController = (UINavigationController *)self.window.rootViewController;
+        
+            if([navController.visibleViewController isKindOfClass:[HomeViewController class]])
+               [[NSNotificationCenter defaultCenter] postNotificationName:@"ProcessNotification" object:nil userInfo:nil];
+            else
+                [navController.visibleViewController.navigationController popToRootViewControllerAnimated:NO];
+            
+            
+        
+    
+        
+    
+    }
+    
+    /*
+    NSString *messageID = [[userInfo valueForKey:@"aps"]valueForKey:@"messageID"];
+    // UIAlertView *alert = [[UIAlertView alloc]initWithTitle:@"Alert" message:messageID delegate:self cancelButtonTitle:@"View" otherButtonTitles: nil];
+    //[alert show];
+    
+    RegistrationModel *registerData = [[RegistrationModel alloc]init];
+    
+    dispatch_queue_t createQueue = dispatch_queue_create("updateAPNS", NULL);
+    dispatch_async(createQueue, ^{
+        [registerData sendAPNSResponseForMessage:messageID];
+    });
+    
+    
+    //int badgeNumber = [[[NSUserDefaults standardUserDefaults]objectForKey:BADGE_COUNT] intValue];
+    
+    
+    //badgeNumber++;
+    
+    //[[NSUserDefaults standardUserDefaults] setObject:[NSString stringWithFormat:@"%i", badgeNumber] forKey:BADGE_COUNT];
+    //[[NSUserDefaults standardUserDefaults]synchronize];
+    
+    //[[UIApplication sharedApplication]setApplicationIconBadgeNumber:badgeNumber];
+    */
+    
+    completionHandler(UIBackgroundFetchResultNewData);
+}
+
+
+- (BOOL)application:(UIApplication *)application
+didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
+    
+    application.statusBarHidden = YES;
+    /* google
+   [GIDSignIn sharedInstance].clientID = @"332323791823-1if0ttdi9h1jr1cskpveeibe3su04ip2.apps.googleusercontent.com";
+    */
+    [[FBSDKApplicationDelegate sharedInstance] application:application
+                                    didFinishLaunchingWithOptions:launchOptions];
+    
+    [FIRApp configure];
+    
+    //[Firebase defaultConfig].persistenceEnabled = YES;
+    /*
+    AWSCognitoCredentialsProvider *credentialsProvider = [[AWSCognitoCredentialsProvider alloc]
+                                                          initWithRegionType:AWSRegionUSEast1
+                                                          identityPoolId:@"us-east-1:5a183425-2d1c-40b6-8ea0-c7682be77440"];
+    
+    AWSServiceConfiguration *configuration = [[AWSServiceConfiguration alloc] initWithRegion:AWSRegionUSEast1 credentialsProvider:credentialsProvider];
+    
+    [AWSServiceManager defaultServiceManager].defaultServiceConfiguration = configuration;
+    
+    // Initialize the Cognito Sync client
+    AWSCognito *syncClient = [AWSCognito defaultCognito];
+    
+    // Create a record in a dataset and synchronize with the server
+    AWSCognitoDataset *dataset = [syncClient openOrCreateDataset:@"myDataset"];
+    [dataset setString:@"myValue" forKey:@"myKey"];
+    [[dataset synchronize] continueWithBlock:^id(AWSTask *task) {
+        // Your handler code here
+        return nil;
+    }];
+    */
+    
+    //if([[[NSUserDefaults standardUserDefaults]objectForKey:ACCOUNT_CREATED]boolValue])
+    //{
+        //-- Set Notification
+        if ([[[UIDevice currentDevice] systemVersion] floatValue] >= 8.0)
+        {
+            [[UIApplication sharedApplication] registerUserNotificationSettings:[UIUserNotificationSettings settingsForTypes:(UIUserNotificationTypeSound | UIUserNotificationTypeAlert | UIUserNotificationTypeBadge) categories:nil]];
+            [[UIApplication sharedApplication] registerForRemoteNotifications];
+        }
+        else
+        {
+            [[UIApplication sharedApplication] registerForRemoteNotifications];
+        }
+        
+        
+    //}
+
+    
     return YES;
 }
+
+- (void)applicationDidBecomeActive:(UIApplication *)application {
+    [FBSDKAppEvents activateApp];
+}
+
+- (BOOL)application:(UIApplication *)application openURL:(NSURL *)url
+  sourceApplication:(NSString *)sourceApplication annotation:(id)annotation {
+    
+    if([[FBSDKApplicationDelegate sharedInstance] application:application
+                                                      openURL:url
+                                            sourceApplication:sourceApplication
+                                                   annotation:annotation])
+        return YES;
+    /* google
+    else if([[GIDSignIn sharedInstance] handleURL:url
+                                sourceApplication:sourceApplication
+                                       annotation:annotation])
+        return YES;
+     */   
+    return NO;
+}
+
 
 - (void)applicationWillResignActive:(UIApplication *)application {
     // Sent when the application is about to move from active to inactive state. This can occur for certain types of temporary interruptions (such as an incoming phone call or SMS message) or when the user quits the application and it begins the transition to the background state.
@@ -32,10 +401,6 @@
 
 - (void)applicationWillEnterForeground:(UIApplication *)application {
     // Called as part of the transition from the background to the inactive state; here you can undo many of the changes made on entering the background.
-}
-
-- (void)applicationDidBecomeActive:(UIApplication *)application {
-    // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
 }
 
 - (void)applicationWillTerminate:(UIApplication *)application {

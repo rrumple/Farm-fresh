@@ -8,6 +8,12 @@
 
 #import <UIKit/UIKit.h>
 #import <CoreData/CoreData.h>
+#import <FBSDKCoreKit/FBSDKCoreKit.h>
+/* google
+#import <GoogleSignIn/GoogleSignIn.h>
+ */
+#import "Firebase.h"
+#import "UserModel.h"
 
 @interface AppDelegate : UIResponder <UIApplicationDelegate>
 
@@ -16,6 +22,9 @@
 @property (readonly, strong, nonatomic) NSManagedObjectContext *managedObjectContext;
 @property (readonly, strong, nonatomic) NSManagedObjectModel *managedObjectModel;
 @property (readonly, strong, nonatomic) NSPersistentStoreCoordinator *persistentStoreCoordinator;
+
+@property (nonatomic, strong) UserModel *userData;
+
 
 - (void)saveContext;
 - (NSURL *)applicationDocumentsDirectory;
