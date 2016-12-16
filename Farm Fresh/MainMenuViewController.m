@@ -37,11 +37,21 @@
 @property (weak, nonatomic) IBOutlet UILabel *displayNameLabel;
 
 @property (weak, nonatomic) IBOutlet UILabel *chatBadgeLabel;
+@property (weak, nonatomic) IBOutlet UILabel *sellBadgeLabel;
+@property (weak, nonatomic) IBOutlet UILabel *notificationsBadgeLabel;
+@property (weak, nonatomic) IBOutlet UILabel *favoritesBadgeLabel;
+@property (weak, nonatomic) IBOutlet UILabel *profileBadgeLabel;
 
 @property (nonatomic, strong) UIImageView *screenShotView;
 @property (nonatomic, strong) UIButton *exitButton;
 @property (nonatomic) BOOL isLogin;
 @property (nonatomic, strong) NSArray *notificationsNew;
+
+@property(nonatomic) NSUInteger sellBadgeCount;
+@property(nonatomic) NSUInteger favoriteBadgeCount;
+@property(nonatomic) NSUInteger chatBadgeCount;
+@property(nonatomic) NSUInteger notificationsBadgeCount;
+@property(nonatomic) NSUInteger profileBadgeCount;
 
 
 @end
@@ -95,6 +105,10 @@
     [super viewWillDisappear:animated];
     
     self.chatBadgeLabel.hidden = YES;
+    self.sellBadgeLabel.hidden = YES;
+    self.favoritesBadgeLabel.hidden = YES;
+    self.notificationsBadgeLabel.hidden = YES;
+    self.profileBadgeLabel.hidden = YES;
     self.notificationsNew = [[NSArray alloc]init];
 }
 
@@ -134,10 +148,17 @@
     
     //to bring invite cell back unhide and move up between notifications and profile
     
-    self.chatBadgeLabel.layer.cornerRadius = self.chatBadgeLabel.bounds.size.height / 2;
-    self.chatBadgeLabel.layer.borderColor = [UIColor whiteColor].CGColor;
-    self.chatBadgeLabel.layer.borderWidth = 1.0f;
+    [self prepBadgeLabel:self.chatBadgeLabel];
+    [self prepBadgeLabel:self.sellBadgeLabel];
+    [self prepBadgeLabel:self.favoritesBadgeLabel];
+    [self prepBadgeLabel:self.notificationsBadgeLabel];
+    [self prepBadgeLabel:self.profileBadgeLabel];
     
+    self.sellBadgeCount = 0;
+    self.favoriteBadgeCount = 0;
+    self.chatBadgeCount = 0;
+    self.notificationsBadgeCount = 0;
+    self.profileBadgeCount = 0;
    
     
     self.profileImageView.layer.cornerRadius = 30.0f;
@@ -236,7 +257,7 @@
             {
                 UIAlertController *alertController = [UIAlertController
                                                       alertControllerWithTitle:@"Farm Fresh"
-                                                      message:@"List a new Product for sell or edit a previously posted product."
+                                                      message:@"Your farm profile is incomplete, please update your farm profile to post products."
                                                       preferredStyle:UIAlertControllerStyleAlert];
                 
                 
@@ -274,11 +295,18 @@
 }
 #pragma mark - Methods
 
+- (void)prepBadgeLabel:(UILabel *)label
+{
+    label.layer.cornerRadius = label.bounds.size.height / 2;
+    label.layer.borderColor = [UIColor whiteColor].CGColor;
+    label.layer.borderWidth = 1.0f;
+}
+
 - (void)getNewNotifications
 {
     FIRDatabaseReference *userNotificationRef = [self.userData.ref child:[NSString stringWithFormat:@"/notification/%@", self.userData.user.uid]];
     
-    [userNotificationRef observeSingleEventOfType:FIRDataEventTypeValue withBlock:^(FIRDataSnapshot *snapshot2) {
+    [userNotificationRef observeEventType:FIRDataEventTypeValue withBlock:^(FIRDataSnapshot *snapshot2) {
         
         if(snapshot2.value == [NSNull null]) {
             
@@ -289,6 +317,8 @@
             NSArray *keys = value1.allKeys;
             
             self.notificationsNew = keys;
+            
+            self.chatBadgeCount = self.notificationsNew.count;
             
             dispatch_async(dispatch_get_main_queue(), ^{
                 

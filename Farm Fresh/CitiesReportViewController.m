@@ -13,6 +13,8 @@
 @property (nonatomic, strong) NSMutableArray *cities;
 @property (nonatomic) int searchCounter;
 @property (nonatomic, strong) GFCircleQuery *circleQuery;
+@property (nonatomic, strong) NSDictionary *cityNamesDic;
+@property (nonatomic) BOOL isCircleQueryRunning;
 @end
 
 @implementation CitiesReportViewController
@@ -29,70 +31,214 @@
     [super viewDidLoad];
    
     self.navigationController.navigationBarHidden = YES;
+    self.isCircleQueryRunning = NO;
     self.searchCounter = 0;
     self.citiesTableView.delegate = self;
     self.citiesTableView.dataSource = self;
     
-    CLLocation *loc = [[CLLocation alloc]initWithLatitude:39.781365 longitude:-96.848032];
+    FIRDatabaseReference *cities = [self.userData.ref child:@"/cities"];
     
-    self.circleQuery = [self.userData.geoFireCities queryAtLocation:loc withRadius:2500];
-    
-    [self.circleQuery observeEventType:GFEventTypeKeyEntered withBlock:^(NSString *key, CLLocation *location) {
-        NSLog(@"Key '%@' entered the search area and is at location '%@'", key, location);
+    [cities observeEventType:FIRDataEventTypeValue withBlock:^(FIRDataSnapshot * _Nonnull snapshot) {
         
-        self.searchCounter++;
-        CLGeocoder * geoCoder = [[CLGeocoder alloc] init];
-        [geoCoder reverseGeocodeLocation:location completionHandler:^(NSArray *placemarks, NSError *error) {
+        if (snapshot.value == [NSNull null]) {
+            // The value is null
+        }
+        else
+        {
+            NSDictionary *value1 = snapshot.value;
             
-            if(!error)
+            NSLog(@"%@", value1);
+            
+            self.cityNamesDic = value1;
+            
+            if(!self.isCircleQueryRunning)
             {
-                for (CLPlacemark * placemark in placemarks)
-                {
-                    NSLog(@"placemark.ISOcountryCode %@",placemark.ISOcountryCode);
-                    NSLog(@"placemark.country %@",placemark.country);
-                    NSLog(@"placemark.postalCode %@",placemark.postalCode);
-                    NSLog(@"placemark.administrativeArea %@",placemark.administrativeArea);
-                    NSLog(@"placemark.locality %@",placemark.locality);
-                    NSLog(@"placemark.subLocality %@",placemark.subLocality);
-                    NSLog(@"placemark.subThoroughfare %@",placemark.subThoroughfare);
-                    
-                    if(placemark.locality)
+                self.isCircleQueryRunning = YES;
+                
+                FIRDatabaseReference *geoCityRef = [self.userData.ref child:@"/_geofire_cities/"];
+                
+                [geoCityRef observeSingleEventOfType:FIRDataEventTypeValue withBlock:^(FIRDataSnapshot * _Nonnull snapshot2) {
+                    if (snapshot2.value == [NSNull null]) {
+                        // The value is null
+                    }
+                    else
                     {
                         
-                        [self.cities addObject:@{
-                                                @"cityName" : [NSString stringWithFormat:@"%@, %@",placemark.locality, placemark.administrativeArea],
-                                                @"cityCount" : @"0"
+                        
+                        NSDictionary *value2 = snapshot2.value;
+                        
+                        NSArray *allKeys = value2.allKeys;
+                        
+                        
+                        for(NSString *key in allKeys)
+                        {
+                            self.searchCounter++;
+                            
+                            NSDictionary *dic = [value2 objectForKey:key];
+                            
+                            NSLog(@"%@", dic);
+                            
+                            CLLocation *location = [[CLLocation alloc]initWithLatitude:[[dic objectForKey:@"l"][0] doubleValue] longitude:[[dic objectForKey:@"l"][1] doubleValue]];
+                            
+                            NSLog(@"%@", location.description);
+                            
+                            NSString *keyString = [[NSString stringWithFormat:@"%.12g%.12g", location.coordinate.latitude, location.coordinate.longitude] lowercaseString];
+                            keyString = [keyString stringByReplacingOccurrencesOfString:@"." withString:@"_"];
+                            
+                            
+                            if(![self.cityNamesDic objectForKey:keyString])
+                            {
+                                CLGeocoder * geoCoder = [[CLGeocoder alloc] init];
+                                [geoCoder reverseGeocodeLocation:location completionHandler:^(NSArray *placemarks, NSError *error) {
+                                    
+                                    if(!error)
+                                    {
+                                        for (CLPlacemark * placemark in placemarks)
+                                        {
+                                            
+                                            if(placemark.locality)
+                                            {
+                                                [self.cities addObject:@{
+                                                                         @"cityName" : [NSString stringWithFormat:@"%@, %@",placemark.locality, placemark.administrativeArea],
+                                                                         @"cityCount" : @"0"
+                                                                         }];
+                                                
+                                                //NSString *keyString = [[NSString stringWithFormat:@"%.12g%.12g", location.coordinate.latitude, location.coordinate.longitude] lowercaseString];
+                                                //keyString = [keyString stringByReplacingOccurrencesOfString:@"+" withString:@"pos"];
+                                                //keyString = [keyString stringByReplacingOccurrencesOfString:@"-" withString:@"neg"];
+                                                //keyString = [keyString stringByReplacingOccurrencesOfString:@"." withString:@"_"];
+                                                
+                                                FIRDatabaseReference *cityRef = [self.userData.ref child:[NSString stringWithFormat:@"/cities/%@", keyString]];
+                                                
+                                                [cityRef setValue:[NSString stringWithFormat:@"%@, %@",placemark.locality, placemark.administrativeArea] withCompletionBlock:^(NSError * _Nullable error, FIRDatabaseReference * _Nonnull ref) {
+                                                    
+                                                    
                                                 }];
+                                                
+                                                
+                                                [self checkSearchCounter];
+                                            }
+                                            else
+                                                NSLog(@"%@", placemark.description);
+                                            
+                                        }
+                                        
+                                    }
+                                    else
+                                    {
+                                        [self checkSearchCounter];
+                                        NSLog(@"failed getting city: %@", [error description]);
+                                    }
+                                }];
+                            }
+                            else
+                            {
+                                [self.cities addObject:@{
+                                                         @"cityName" : [self.cityNamesDic objectForKey:keyString],
+                                                         @"cityCount" : @"0"
+                                                         }];
+                                
+                                [self checkSearchCounter];
+                            }
+                        }
+                        
+                        
+                    }
+                }];
+                
+                
+                //CLLocation *loc = [[CLLocation alloc]initWithLatitude:39.781365 longitude:-96.848032];
+                
+                //self.circleQuery = [self.userData.geoFireCities queryAtLocation:loc withRadius:2500];
+                
+               /* [self.circleQuery observeEventType:GFEventTypeKeyEntered withBlock:^(NSString *key, CLLocation *location) {
+                    NSLog(@"Key '%@' entered the search area and is at location '%@'", key, location);
+                    
+                    self.searchCounter++;
+                    
+                    NSString *keyString = [[NSString stringWithFormat:@"%.12g%.12g", location.coordinate.latitude, location.coordinate.longitude] lowercaseString];
+                    keyString = [keyString stringByReplacingOccurrencesOfString:@"." withString:@"_"];
+                    
+                    
+                    if(![self.cityNamesDic objectForKey:keyString])
+                    {
+                        CLGeocoder * geoCoder = [[CLGeocoder alloc] init];
+                        [geoCoder reverseGeocodeLocation:location completionHandler:^(NSArray *placemarks, NSError *error) {
+                            
+                            if(!error)
+                            {
+                                for (CLPlacemark * placemark in placemarks)
+                                {
+                                    
+                                    if(placemark.locality)
+                                    {
+                                        [self.cities addObject:@{
+                                                                 @"cityName" : [NSString stringWithFormat:@"%@, %@",placemark.locality, placemark.administrativeArea],
+                                                                 @"cityCount" : @"0"
+                                                                 }];
+                                        
+                                        //NSString *keyString = [[NSString stringWithFormat:@"%.12g%.12g", location.coordinate.latitude, location.coordinate.longitude] lowercaseString];
+                                        //keyString = [keyString stringByReplacingOccurrencesOfString:@"+" withString:@"pos"];
+                                        //keyString = [keyString stringByReplacingOccurrencesOfString:@"-" withString:@"neg"];
+                                        //keyString = [keyString stringByReplacingOccurrencesOfString:@"." withString:@"_"];
+                                        
+                                        FIRDatabaseReference *cityRef = [self.userData.ref child:[NSString stringWithFormat:@"/cities/%@", keyString]];
+                                        
+                                        [cityRef setValue:[NSString stringWithFormat:@"%@, %@",placemark.locality, placemark.administrativeArea] withCompletionBlock:^(NSError * _Nullable error, FIRDatabaseReference * _Nonnull ref) {
+                                            
+                                            
+                                        }];
+                                        
+                                        
+                                        [self checkSearchCounter];
+                                    }
+                                    else
+                                        NSLog(@"%@", placemark.description);
+                                    
+                                }
+                                
+                            }
+                            else
+                            {
+                                [self checkSearchCounter];
+                                NSLog(@"failed getting city: %@", [error description]);
+                            }
+                        }];
+                    }
+                    else
+                    {
+                        [self.cities addObject:@{
+                                                 @"cityName" : [self.cityNamesDic objectForKey:keyString],
+                                                 @"cityCount" : @"0"
+                                                 }];
                         
                         [self checkSearchCounter];
                     }
                     
-                }
+                    
+                    
+                    
+                    
+                }];
                 
+                [self.circleQuery observeReadyWithBlock:^{
+                    NSLog(@"All initial data has been loaded and events have been fired!");
+                    
+                    //[self.citiesTableView reloadData];
+                    
+                    
+                }];
+                */
             }
-            else
-            {
-                [self checkSearchCounter];
-                NSLog(@"failed getting city: %@", [error description]);
-            }
-        }];
-        
-        
-        
-        
-     
-        
-        
-        
+            
+            
+            
+            
+            
+        }
     }];
     
-    [self.circleQuery observeReadyWithBlock:^{
-        NSLog(@"All initial data has been loaded and events have been fired!");
-        
-        //[self.citiesTableView reloadData];
-        
-        
-    }];
+   
 }
 
 - (void)viewWillAppear:(BOOL)animated

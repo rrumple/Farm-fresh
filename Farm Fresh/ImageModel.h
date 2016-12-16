@@ -30,5 +30,7 @@
 
 @optional
 - (void)imageUploadtCompleteForIndex:(int)index;
+- (void)imageUploadtCompleteFacebookReady:(NSURL *)url;
+- (void)imageUploadUpdate;
 @end
 

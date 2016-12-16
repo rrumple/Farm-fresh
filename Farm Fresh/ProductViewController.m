@@ -184,6 +184,7 @@
         self.loadingView.hidden = NO;
         switch ([[[NSUserDefaults standardUserDefaults] objectForKey:SCREEN_TO_LOAD]intValue]) {
             case 1:
+                
                 [self.userData updateFavoriteFarmersData];
                 break;
                 
@@ -1009,6 +1010,14 @@
 
 #pragma mark - Delegate Methods
 
+- (void)favoriteFarmersUpdateFailed
+{
+    [self.navigationController popViewControllerAnimated:YES];
+    [self presentViewController: [UIView createSimpleAlertWithMessage:@"There was a problem loading the product, try again later"andTitle:@"Error!" withOkButton:NO] animated: YES completion:^{
+        
+    }];
+}
+
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView
 {
     if(IS_IPHONE_4_OR_LESS || IS_IPHONE_5)
@@ -1018,7 +1027,7 @@
 
 - (void)farmerProductsLoadComplete
 {
-    
+    NSLog(@"Farmer Products Load Complete");
     [self.userData setSelectedFromFavoritesProductByProductID:[[NSUserDefaults standardUserDefaults] objectForKey:@"productID"]];
     self.productSelected = [self.userData getProductSelectedIsFavorite:YES];
     self.locationSelected = [self.userData getLocationSelectedIsFavorite:YES ];
@@ -1035,7 +1044,8 @@
 
 - (void)favoriteFarmersUpdated
 {
-    NSLog(@"%@", [[NSUserDefaults standardUserDefaults] objectForKey:@"fromUserID"]);
+    
+    NSLog(@"FROM USERID: %@", [[NSUserDefaults standardUserDefaults] objectForKey:@"fromUserID"]);
     
     if(![[[NSUserDefaults standardUserDefaults] objectForKey:@"fromUserID"] isEqualToString:@""] && [[NSUserDefaults standardUserDefaults] objectForKey:@"fromUserID"] != nil && [[NSUserDefaults standardUserDefaults] objectForKey:@"fromUserID"] != (id)[NSNull null])
     {

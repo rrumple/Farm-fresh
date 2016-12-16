@@ -18,6 +18,12 @@
 
 @implementation AppDelegate
 
+- (UserModel *)userData
+{
+    if(!_userData) _userData = [[UserModel alloc]init];
+    return _userData;
+}
+
 - (void)application:(UIApplication *)application didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)deviceToken
 {
     
@@ -48,21 +54,24 @@
     
     //BOOL sendLocalNotification = false;
     
+    self.badgeCount = 0;
+    
     if(state == UIApplicationStateActive)
     {
+        
         
         NSString *title = @"";
         
         NSString *alertType = [[userInfo valueForKey:@"aps"]valueForKey:@"alertType"];
         UINavigationController *navController = (UINavigationController *)self.window.rootViewController;
         
-        if([alertType intValue] != 2 && ![navController.visibleViewController isKindOfClass:[ChatMessagesViewController class]])
+        if([alertType intValue] != 2)
         {
             switch ([alertType intValue]) {
                 case 1: title = @"New Product Posted";
                     break;
                 case 2: title = @"Chat Notification";
-                    break;
+                                        break;
                 case 3: title = @"New Follower Notification";
                     break;
                 case 4: title = @"Product Posted Notification";
@@ -83,6 +92,7 @@
                                        style:UIAlertActionStyleDefault
                                        handler:^(UIAlertAction *action)
                                        {
+                                          
                                            
                                        }];
             [alertController addAction: okAction];
@@ -214,6 +224,67 @@
             else
                  [self.window.rootViewController presentViewController:alertController animated:YES completion:nil];
         }
+        else if([alertType intValue] == 2 && ![navController.visibleViewController isKindOfClass:[ChatMessagesViewController class]])
+        {
+            
+            //[self chatBadgeUpdate];
+            NSInteger badge = [UIApplication sharedApplication].applicationIconBadgeNumber + 1;
+            [[UIApplication sharedApplication]setApplicationIconBadgeNumber:badge];
+
+            
+            title = @"Chat Notification";
+            
+            UIAlertController *alertController = [UIAlertController
+                                                  alertControllerWithTitle:title
+                                                  message:[[userInfo valueForKey:@"aps"]valueForKey:@"alert"]
+                                                  preferredStyle:UIAlertControllerStyleAlert];
+            
+            UIAlertAction *okAction = [UIAlertAction
+                                       actionWithTitle:@"Dismiss"
+                                       style:UIAlertActionStyleDefault
+                                       handler:^(UIAlertAction *action)
+                                       {
+                                           
+                                       }];
+            [alertController addAction: okAction];
+            
+            UIAlertAction *chatAction;
+            
+            chatAction = [UIAlertAction
+                          actionWithTitle:@"View Message"
+                          style:UIAlertActionStyleDefault
+                          handler:^(UIAlertAction *action)
+                          {
+                              NSString *name = @"";
+                              [[NSUserDefaults standardUserDefaults] setObject:@"2" forKey:SCREEN_TO_LOAD];
+                              [[NSUserDefaults standardUserDefaults]synchronize];
+                              [[NSUserDefaults standardUserDefaults] setObject:[[userInfo valueForKey:@"aps"] valueForKey:@"fromUserID"] forKey:@"fromUserID"];
+                              [[NSUserDefaults standardUserDefaults]synchronize];
+                              [[NSUserDefaults standardUserDefaults] setObject:[[userInfo valueForKey:@"aps"] valueForKey:@"userType"] forKey:@"userType"];
+                              [[NSUserDefaults standardUserDefaults]synchronize];
+                              
+                              
+                              
+                              name = [[userInfo valueForKey:@"aps"]valueForKey:@"alert"];
+                              name = [name stringByReplacingOccurrencesOfString: @" has sent you a message." withString:@""];
+                              
+                              [[NSUserDefaults standardUserDefaults] setObject:name forKey:@"fromUserIDName"];
+                              [[NSUserDefaults standardUserDefaults]synchronize];
+                              [[NSUserDefaults standardUserDefaults] setObject:@"1" forKey:ALERT_RECIEVED];
+                              [[NSUserDefaults standardUserDefaults]synchronize];
+                              
+                              
+                              if([navController.visibleViewController isKindOfClass:[HomeViewController class]])
+                                  [[NSNotificationCenter defaultCenter] postNotificationName:@"ProcessNotification" object:nil userInfo:nil];
+                              else
+                                  [navController.visibleViewController.navigationController popToRootViewControllerAnimated:NO];
+                          }];
+            
+            [alertController addAction: chatAction];
+            [self.window.rootViewController presentViewController:alertController animated:YES completion:nil];
+
+            
+        }
         
     
        
@@ -244,7 +315,7 @@
                 [[NSUserDefaults standardUserDefaults] setObject:[[userInfo valueForKey:@"aps"] valueForKey:@"userType"] forKey:@"userType"];
                 [[NSUserDefaults standardUserDefaults]synchronize];
                 
-        
+                //[self chatBadgeUpdate];
                 
                 name = [[userInfo valueForKey:@"aps"]valueForKey:@"alert"];
                 name = [name stringByReplacingOccurrencesOfString: @" has sent you a message." withString:@""];
@@ -305,11 +376,60 @@
     
     //[[NSUserDefaults standardUserDefaults] setObject:[NSString stringWithFormat:@"%i", badgeNumber] forKey:BADGE_COUNT];
     //[[NSUserDefaults standardUserDefaults]synchronize];
-    
-    //[[UIApplication sharedApplication]setApplicationIconBadgeNumber:badgeNumber];
     */
+   
+    
     
     completionHandler(UIBackgroundFetchResultNewData);
+}
+
+- (void)chatBadgeUpdate
+{
+    FIRDatabaseReference *badgeRef = [[FIRDatabase database] reference];
+    
+    if(self.userData.user.uid)
+    {
+        [[badgeRef child:[NSString stringWithFormat:@"/users/%@/", self.userData.user.uid]]observeSingleEventOfType:FIRDataEventTypeValue withBlock:^(FIRDataSnapshot * _Nonnull snapshot) {
+            
+            if(snapshot.value == [NSNull null])
+            {
+                self.badgeCount = 0;
+                [[UIApplication sharedApplication]setApplicationIconBadgeNumber:self.badgeCount];
+            }
+            else
+            {
+                NSLog(@"%@", snapshot.value);
+                
+                NSDictionary *user = snapshot.value;
+                
+                int chatBadgeCount = [[user objectForKey:@"chatBadgeCount"]intValue];
+                
+                int sellBadgeCount = [[user objectForKey:@"sellBadgeCount"]intValue];
+                int favoriteBadgeCount = [[user objectForKey:@"favoriteBadgeCount"]intValue];
+                int notificationBadgeCount = [[user objectForKey:@"notificationBadgeCount"]intValue];
+                int profileBadgeCount = [[user objectForKey:@"profileBadgeCount"]intValue];
+                
+                chatBadgeCount--;
+                
+                if(chatBadgeCount <= 0)
+                    chatBadgeCount = 0;
+                
+                self.badgeCount = chatBadgeCount + sellBadgeCount + favoriteBadgeCount + notificationBadgeCount + profileBadgeCount;
+                
+                [[UIApplication sharedApplication]setApplicationIconBadgeNumber:self.badgeCount];
+                
+                
+                
+                FIRDatabaseReference *saveRef = [[FIRDatabase database]reference];
+                
+                [[saveRef child:[NSString stringWithFormat:@"/users/%@/chatBadgeCount/", self.userData.user.uid]] setValue: [NSNumber numberWithInt:chatBadgeCount] withCompletionBlock:^(NSError * _Nullable error, FIRDatabaseReference * _Nonnull ref) {
+                    
+                    
+                }];
+            }
+            
+        }];
+    }
 }
 
 

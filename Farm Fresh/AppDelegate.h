@@ -24,7 +24,7 @@
 @property (readonly, strong, nonatomic) NSPersistentStoreCoordinator *persistentStoreCoordinator;
 
 @property (nonatomic, strong) UserModel *userData;
-
+@property (nonatomic) int badgeCount;
 
 - (void)saveContext;
 - (NSURL *)applicationDocumentsDirectory;

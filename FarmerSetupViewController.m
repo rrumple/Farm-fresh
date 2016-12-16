@@ -257,7 +257,7 @@
     dispatch_queue_t createQueue = dispatch_queue_create("sendPDFEmail", NULL);
     dispatch_async(createQueue, ^{
         
-        [self.contactData sendPDFToFarmer:[NSString stringWithFormat:@"%@ %@", self.userData.firstName, self.userData.lastName] withEmail:self.userData.email withFarmName:self.userData.farmName withDelegate:self];
+        [self.contactData sendPDFToFarmer:[NSString stringWithFormat:@"%@ %@", self.userData.firstName, self.userData.lastName] withEmail:self.userData.email withFarmName:self.farmNameTextfield.text withDelegate:self];
 
         
     });

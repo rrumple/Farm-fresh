@@ -16,12 +16,25 @@
 
 @property (weak, nonatomic) IBOutlet UIImageView *menuImageView;
 @property (weak, nonatomic) IBOutlet UIButton *facebookButton;
+@property (weak, nonatomic) IBOutlet UIView *mainView;
+@property (weak, nonatomic) IBOutlet NSLayoutConstraint *mainViewTopConstraint;
 
 @end
 
 @implementation InviteFriendsViewController
 
 #pragma mark - Life Cycle
+
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    
+    self.mainViewTopConstraint.constant = self.view.frame.size.height;
+    
+    [self.view layoutIfNeeded];
+    
+    [self.menuImageView setImage:self.menuImage];
+}
 
 - (void)viewWillAppear:(BOOL)animated
 {
@@ -30,11 +43,53 @@
     [FIRAnalytics logEventWithName:@"Invite_Screen_Loaded" parameters:nil];
 }
 
+- (void)viewDidAppear:(BOOL)animated
+{
+    [super viewDidAppear:animated];
+    
+
+    self.mainViewTopConstraint.constant = 0;
+    
+    [UIView animateWithDuration:0.4f animations:^{
+        
+        [self.view layoutIfNeeded];
+    }];
+    
+}
+
 #pragma mark - IBActions
+
 - (IBAction)backButtonPressed {
     
-    [self.navigationController popViewControllerAnimated:YES];
+    self.mainViewTopConstraint.constant = self.view.frame.size.height;
+    
+    [UIView animateWithDuration:0.4f animations:^{
+        [self.view layoutIfNeeded];
+    } completion:^(BOOL finished) {
+        
+
+        [self.navigationController popViewControllerAnimated:NO];
+    }];
+    
+
 }
+
+- (IBAction)otherShareButtonPressed:(UIButton *)sender {
+    
+    sender.enabled = NO;
+    NSString *shareString = @"I just found locally grown food on the Farm Fresh App. Download Farm Fresh from the app store to find locally grown food in your area!  apple.co/2adU7sH";
+    UIImage *shareImage = [UIImage imageNamed:@"emailAppIcon"];
+    NSURL *shareUrl = [NSURL URLWithString:@"apple.co/2adU7sH"];
+    
+    NSArray *activityItems = [NSArray arrayWithObjects:shareString, shareImage, shareUrl, nil];
+    UIActivityViewController *activityViewController = [[UIActivityViewController alloc] initWithActivityItems:activityItems applicationActivities:nil];
+    activityViewController.modalTransitionStyle = UIModalTransitionStyleCoverVertical;
+    
+    [self presentViewController:activityViewController animated:YES completion:^{
+        sender.enabled = YES;
+    }];
+}
+
 - (IBAction)emailInviteButtonPressed:(UIButton *)sender {
     
     sender.enabled = NO;
@@ -46,7 +101,7 @@
     //include your app icon here
     [mcvc addAttachmentData:UIImageJPEGRepresentation(image, 1) mimeType:@"image/jpg" fileName:@"icon.jpg"];
     // your message and link
-    NSString *defaultBody =@"Email Description, apple.co/2adU7sH";
+    NSString *defaultBody =@"I just found locally grown food on the Farm Fresh App. Download Farm Fresh from the app store to find locally grown food in your area!  apple.co/2adU7sH";
     [mcvc setMessageBody:defaultBody isHTML:YES];
     [self presentViewController:mcvc animated:YES completion:^{
         sender.enabled = YES;
@@ -81,7 +136,7 @@
     {
         SLComposeViewController *tweetSheet = [SLComposeViewController
                                                composeViewControllerForServiceType:SLServiceTypeTwitter];
-        [tweetSheet setInitialText:@"I just downloaded the #FarmFresh app http://apple.co/2a9HpPY "];
+        [tweetSheet setInitialText:@"I just found locally grown food on the #FarmFresh App. Download from the app store to find locally grown food! http://apple.co/2a9HpPY"];
         [self presentViewController:tweetSheet animated:YES completion:^{
             sender.enabled = YES;
         }];
@@ -119,11 +174,7 @@
 #pragma mark - Navigation
 
 
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    
-    [self.menuImageView setImage:self.menuImage];
-}
+
 
 - (void)didReceiveMemoryWarning {
     [super didReceiveMemoryWarning];

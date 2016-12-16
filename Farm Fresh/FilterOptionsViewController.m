@@ -35,6 +35,8 @@
 {
     [super viewWillAppear:animated];
     
+    [self.userData checkSearchTimer];
+    
      [FIRAnalytics logEventWithName:@"Filter_Options_Screen_Loaded" parameters:nil];
     
     self.currentAddressLabel.text = [[NSUserDefaults standardUserDefaults] objectForKey:@"filterLocationName"];
@@ -125,6 +127,7 @@
 - (IBAction)saveButtonPressed:(UIButton *)sender {
     
     sender.enabled = false;
+
     
         [self.userData changeRadius:roundf(self.milesSlider.value * 2.0) * .5];
   

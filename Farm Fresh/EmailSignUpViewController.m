@@ -117,6 +117,8 @@
                                     } else {
                                         // We are now logged in
                                         
+                                        [self.userData checkSearchTimer];
+                                        
                                         if (user) {
                                             self.userData.user = user;
                                             //Start Logging In spinner
@@ -281,6 +283,7 @@
           } else {
               self.spinnerView.hidden = NO;
               // We are now logged in
+              [self.userData checkSearchTimer];
                [FIRAnalytics logEventWithName:@"Email_Login_Used" parameters:nil];
               [self.userData updateUserStatus];
               

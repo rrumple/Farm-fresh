@@ -99,6 +99,15 @@
     
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     
+}
+
+- (void)viewDidAppear:(BOOL)animated
+{
+    [super viewDidAppear:animated];
+    [self.userData updateNotificationsStatus:[self.userSelected objectForKey:@"userID"]];
+    
+    
+    
     
 }
 
@@ -169,6 +178,7 @@
                                    };
     
     [[[self.userData.ref child:@"alert_queue"]childByAutoId]setValue:notificaiton withCompletionBlock:^(NSError * _Nullable error, FIRDatabaseReference * _Nonnull ref) {
+        
         [FIRAnalytics logEventWithName:@"Notification_Sent" parameters:@{
                                                                          @"Notification_Type" : @"Chat Alert"
                                                                          
@@ -217,6 +227,7 @@
                     NSLog(@"No messages");
                     FIRDatabaseReference *notification = [self.recNotificationRef childByAutoId];
                     [notification updateChildValues:@{@"userID": self.userData.user.uid}];
+                
                     
                     
                 } else {

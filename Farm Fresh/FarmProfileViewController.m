@@ -90,6 +90,7 @@
 @property (weak, nonatomic) IBOutlet UILabel *locationNameLabel;
 @property (nonatomic) BOOL isOpen;
 
+@property (weak, nonatomic) IBOutlet UITextView *farmDescriptionTextView;
 
 @property (weak, nonatomic) IBOutlet NSLayoutConstraint *tableViewHeightConstraint;
 @property (weak, nonatomic) IBOutlet NSLayoutConstraint *tableViewRealHeightConstraint;
@@ -236,7 +237,9 @@
     
     [self.reviewsButton setTitle:[NSString stringWithFormat:@"%@ Reviews", self.farmerSelected[@"numReviews"]] forState:UIControlStateNormal];
     
-    self.farmDescriptionLabel.text = self.farmerSelected[@"farmDescription"];
+    //self.farmDescriptionLabel.text = self.farmerSelected[@"farmDescription"];
+    
+    self.farmDescriptionTextView.text = self.farmerSelected[@"farmDescription"];
     
     UILabel * textView = [[UILabel alloc] initWithFrame: CGRectMake(0, 0, self.view.frame.size.width - 40, MAX_HEIGHT)];
     textView.numberOfLines = 0;
@@ -250,10 +253,12 @@
     {
         self.moreButton.hidden = NO;
         [self.moreButton setTitle:@"More..." forState:UIControlStateNormal];
+        self.farmDescriptionTextView.scrollEnabled = NO;
     }
     else
     {
         self.moreButton.hidden = YES;
+        self.farmDescriptionTextView.scrollEnabled = NO;
     }
     
     UISwipeGestureRecognizer *swipeGesture = [[UISwipeGestureRecognizer alloc]initWithTarget:self action:@selector(swipeUp)];
@@ -392,7 +397,7 @@
     
     if([sender.titleLabel.text isEqualToString:@"Show Less..."])
     {
-        
+        self.farmDescriptionTextView.scrollEnabled = NO;
         self.tableViewHeightConstraint.constant = 200;
         self.swipeGestureViewTopConstraint.constant = 200;
         self.moreButtonView.constant = 66;
@@ -404,7 +409,7 @@
     }
     else
     {
-       
+        self.farmDescriptionTextView.scrollEnabled = YES;
         self.tableViewHeightConstraint.constant = 320;
         self.swipeGestureViewTopConstraint.constant = 320;
         self.moreButtonView.constant = 176;

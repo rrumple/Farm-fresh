@@ -79,13 +79,13 @@
     
     self.userData.delegate = self;
     
-    self.isFavorite = NO;
+    
     self.successfulSearch = NO;
     self.useFilteredResults = NO;
     self.searchCounter = 0;
     self.isSearching = NO;
     self.isFirstLoad = YES;
-    self.isGPSError = NO;
+    
   
     
 
@@ -103,6 +103,13 @@
 
 - (void)appHasGoneInBackground
 {
+    [self.userData checkSearchTimer];
+    [self.userData stopSearchingForProducts];
+    self.isSearching = NO;
+    
+    self.successfulSearch = NO;
+    self.runOnce = false;
+  
     NSLog(@"APP WENT IN BACKGROUND");
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(appWillEnterForeground) name:UIApplicationWillEnterForegroundNotification object:nil];
@@ -114,7 +121,7 @@
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(appHasGoneInBackground) name:UIApplicationDidEnterBackgroundNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(processNotification) name:@"ProcessNotification" object:nil];
     
-    
+    self.isFavorite = NO;
     
     if ([CLLocationManager locationServicesEnabled]) {
         
@@ -133,16 +140,19 @@
             
             // Set a movement threshold for new events.
             self.locationManager.distanceFilter = 500; // meters
-           [self startASearch];
+           //[self startASearch];
             
-            self.spinnerView.hidden = NO;
+            //self.spinnerView.hidden = NO;
             self.runOnce = false;
         }
         
     } else {
         NSLog(@"Location services are not enabled");
         self.isLocationServicesDisabled = YES;
+        [self.produceTableView reloadData];
     }
+    
+    [self.userData updateUserStatus];
     
     
     
@@ -157,7 +167,10 @@
     
     self.userData.delegate = self;
     self.isSearching = NO;
+    self.isFavorite = NO;
+    self.isGPSError = NO;
    
+    
     
     if([[[NSUserDefaults standardUserDefaults] objectForKey:ALERT_RECIEVED]boolValue])
     {
@@ -220,7 +233,7 @@
                 // Set a movement threshold for new events.
                 self.locationManager.distanceFilter = 500; // meters
                 
-                 self.spinnerView.hidden = NO;
+                 //self.spinnerView.hidden = NO;
                 self.runOnce = false;
             }
             
@@ -228,19 +241,11 @@
             NSLog(@"Location services are not enabled");
             self.isLocationServicesDisabled = YES;
         }
+    
         
-        
-
-       
-        [self.userData updateUserStatus];
-        
-        
-        
-        
-        
-       
     }
     
+    [self.userData updateUserStatus];
     
     
     
@@ -253,8 +258,7 @@
     [self.userData stopSearchingForProducts];
     self.isSearching = NO;
      
-    self.successfulSearch = NO;
-    self.runOnce = false;
+    
     
 }
 
@@ -383,6 +387,7 @@
     }
     else
     {
+        [spinner startAnimating];
         spinner.hidden = NO;
         imageView.image = [UIImage imageNamed:@"noImageAvailable"];
         
@@ -393,6 +398,7 @@
         [fileRef dataWithMaxSize:1 * 1024 * 1024 completion:^(NSData *data, NSError *error){
             if (error != nil) {
                 // Uh-oh, an error occurred!
+                spinner.hidden = YES;
                 [spinner stopAnimating];
             } else {
                 NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
@@ -438,16 +444,20 @@
         {
             self.userData.searchResults = [[NSArray alloc]init];
             self.produceSearchBar.text = @"";
-            self.spinnerView.hidden = NO;
+            [self.userData checkSearchTimer];
+            //self.spinnerView.hidden = NO;
             [self startASearch];
             
         }
+        else
+            [self.produceTableView reloadData];
     }
     else
     {
         self.userData.searchResults = [[NSArray alloc]init];
         self.produceSearchBar.text = @"";
-        self.spinnerView.hidden = NO;
+        //self.spinnerView.hidden = NO;
+        [self.userData checkSearchTimer];
         [self startASearch];
         
         
@@ -470,13 +480,15 @@
 - (void)startGPSTimer
 {
     if(!self.gpsTimer.isValid)
-        self.gpsTimer = [NSTimer scheduledTimerWithTimeInterval:2.5 target:self selector:@selector(checkTimer) userInfo:nil repeats:NO];
+    {
+        self.gpsTimer = [NSTimer scheduledTimerWithTimeInterval:4.0 target:self selector:@selector(checkTimer) userInfo:nil repeats:NO];
+    }
 }
 
 
 - (void)startASearch
 {
-    if(!self.isSearching)
+    if(!self.isSearching && !self.userData.isSearchTimerRunning)
     {
         self.spinnerView.hidden = NO;
         if([[[NSUserDefaults standardUserDefaults]objectForKey:@"isUsingGPSForSearches"]boolValue])
@@ -674,7 +686,9 @@
                                 NSLog(@"%@,%@", latDest1, lngDest1);
                                 CLLocation *cityLoc = [[CLLocation alloc]initWithLatitude:aPlacemark.location.coordinate.latitude longitude:aPlacemark.location.coordinate.longitude];
                                 
-                                [self.userData updateCityForUser:cityLoc];
+                                
+                                
+                                [self.userData updateCityForUser:cityLoc withCityName:[NSString stringWithFormat:@"%@, %@",placemark.locality, placemark.administrativeArea]];
                                 
                                 
                             }
@@ -712,7 +726,7 @@
             [FIRAnalytics logEventWithName:@"GPS_Search" parameters:nil];
         
             self.isSearching = YES;
-            self.spinnerView.hidden = NO;
+            //self.spinnerView.hidden = NO;
             self.radius = [self.userData geoQueryforProducts:location];
         
 
@@ -773,8 +787,8 @@
         mmvc.moveImage = YES;
         mmvc.userData = self.userData;
         
-        self.userData.searchResults = [[NSArray alloc]init];
-        [self.produceTableView reloadData];
+        //self.userData.searchResults = [[NSArray alloc]init];
+        //[self.produceTableView reloadData];
         
         
     }

@@ -17,10 +17,12 @@
 #import "ImageModel.h"
 #import <Social/Social.h>
 #import <FBSDKShareKit/FBSDKShareKit.h>
+#import "TOCropViewController.h"
 
 @interface PostProductViewController () <UITextViewDelegate, UIPickerViewDataSource, UIPickerViewDelegate, UITextFieldDelegate, UIGestureRecognizerDelegate, UserModelDelegate,
-UIImagePickerControllerDelegate, UINavigationControllerDelegate, ImageModelDelegate>
+UIImagePickerControllerDelegate, UINavigationControllerDelegate, ImageModelDelegate, FBSDKSharingDelegate, TOCropViewControllerDelegate>
 
+@property (weak, nonatomic) IBOutlet UIProgressView *progressBar;
 @property (nonatomic, strong) UIImagePickerController *imagePicker;
 @property (weak, nonatomic) IBOutlet UIImageView *menuImageView;
 @property (weak, nonatomic) IBOutlet UIView *mainView;
@@ -71,6 +73,8 @@ UIImagePickerControllerDelegate, UINavigationControllerDelegate, ImageModelDeleg
 @property (nonatomic, strong) UIImage *image3;
 @property (nonatomic, strong) UIImage *image4;
 
+@property (nonatomic, strong) NSString *productID;
+
 @property (nonatomic) int imageCount;
 
 @property (weak, nonatomic) IBOutlet UIButton *deleteImageButton;
@@ -81,8 +85,16 @@ UIImagePickerControllerDelegate, UINavigationControllerDelegate, ImageModelDeleg
 
 @property (nonatomic) BOOL firebaseComplete;
 @property (nonatomic) BOOL imagesComplete;
+@property (nonatomic) BOOL isFacebookPostComplete;
 @property (weak, nonatomic) IBOutlet NSLayoutConstraint *trailingConstraint;
 @property (weak, nonatomic) IBOutlet NSLayoutConstraint *leadingConstraint;
+
+@property (nonatomic, strong) UIImage *originalImage1;
+
+@property (nonatomic, assign) TOCropViewCroppingStyle croppingStyle; //The cropping style
+@property (nonatomic, assign) CGRect croppedFrame;
+@property (nonatomic, assign) NSInteger angle;
+@property (nonatomic, strong) UIImage *image;
 
 
 @end
@@ -101,6 +113,7 @@ UIImagePickerControllerDelegate, UINavigationControllerDelegate, ImageModelDeleg
     self.imageCount = 0;
     self.firebaseComplete = NO;
     self.imagesComplete = NO;
+    self.isFacebookPostComplete = NO;
     
     if(IS_IPHONE_6P)
     {
@@ -255,7 +268,7 @@ UIImagePickerControllerDelegate, UINavigationControllerDelegate, ImageModelDeleg
     if(!isImageSet)
     {
     
-        self.imagePicker.allowsEditing = YES;
+        //self.imagePicker.allowsEditing = YES;
         self.currentImage = sender.tag;
         
         self.imagePicker.delegate = self;
@@ -387,33 +400,74 @@ UIImagePickerControllerDelegate, UINavigationControllerDelegate, ImageModelDeleg
     
     [self hideKeyboard];
     sender.enabled = false;
-    NSString *productID;
+    BOOL hasError = false;
     
     if(self.isInEditMode)
     {
         self.spinnerViewLabel.text = @"Updating...";
+        self.progressBar.progress = 0.1;
+        self.isFacebookPostComplete = YES;
         
-        productID = self.productToEdit[@"productID"];
-        
-        self.productData = @{
-                             @"productHeadline" : self.productHeadlineTextfield.text,
-                             @"productDescription" : self.productDescriptionTextview.text,
-                             //@"category" : self.categoryTextfield.text,
-                             @"amount" : [self.amountTextfield.text substringFromIndex:1],
-                             @"amountDescription" : self.amountDescriptionTextfield.text
-                             };
-        [self.userData updateProduct:self.productToEdit[@"productID"] withData:self.productData];
-    }
-    else
-    {
+        self.productID = self.productToEdit[@"productID"];
         if(self.productHeadlineTextfield.text.length > 0)
         {
-            if(self.productDescriptionTextview.text.length > 0)
+            if(self.productDescriptionTextview.text.length > 0 && ![self.productDescriptionTextview.text isEqualToString:@"Write a short description"])
             {
                 if(self.amountTextfield.text.length > 1)
                 {
                     if(self.amountDescriptionTextfield.text.length > 0)
                     {
+                        self.productData = @{
+                                             @"productHeadline" : self.productHeadlineTextfield.text,
+                                             @"productDescription" : self.productDescriptionTextview.text,
+                                             //@"category" : self.categoryTextfield.text,
+                                             @"amount" : [self.amountTextfield.text substringFromIndex:1],
+                                             @"amountDescription" : self.amountDescriptionTextfield.text
+                                             };
+                        [self.userData updateProduct:self.productToEdit[@"productID"] withData:self.productData];
+                        self.firebaseComplete = YES;
+                    }
+                    else
+                    {
+                        hasError = true;
+                        sender.enabled = true;
+                        [self presentViewController: [UIView createSimpleAlertWithMessage:@"Amount description is blank, please list how this item is sold ex.(each, per Lb., etc..)"andTitle:@"Error!" withOkButton:NO] animated: YES completion: nil];
+                    }
+                }
+                else
+                {
+                    hasError = true;
+                    sender.enabled = true;
+                    [self presentViewController: [UIView createSimpleAlertWithMessage:@"Product amount is blank."andTitle:@"Error!" withOkButton:NO] animated: YES completion: nil];
+                }
+            }
+            else
+            {
+                hasError = true;
+                sender.enabled = true;
+                [self presentViewController: [UIView createSimpleAlertWithMessage:@"Product description is blank."andTitle:@"Error!" withOkButton:NO] animated: YES completion: nil];
+            }
+        }
+        else
+        {
+            hasError = true;
+            sender.enabled = true;
+            [self presentViewController: [UIView createSimpleAlertWithMessage:@"Product title is blank."andTitle:@"Error!" withOkButton:NO] animated: YES completion: nil];
+        }
+        
+       
+    }
+    else
+    {
+        if(self.productHeadlineTextfield.text.length > 0)
+        {
+            if(self.productDescriptionTextview.text.length > 0 && ![self.productDescriptionTextview.text isEqualToString:@"Write a short description"])
+            {
+                if(self.amountTextfield.text.length > 1)
+                {
+                    if(self.amountDescriptionTextfield.text.length > 0)
+                    {
+                        self.progressBar.progress = 0.1;
                         self.spinnerViewLabel.text = @"Adding Product...";
                         NSDate *now = [NSDate date];
                         
@@ -434,31 +488,50 @@ UIImagePickerControllerDelegate, UINavigationControllerDelegate, ImageModelDeleg
                                              
                                              };
                         
-                        productID = [self.userData addProductToFarm:self.productData];
+                        self.productID = [self.userData addProductToFarm:self.productData];
                         
-                        if(self.shareOnFacebookSwitch.isOn)
-                            [self postFacebookMessage:productID];
+                        self.firebaseComplete = YES;
+                        [self imageUploadUpdate];
+                        
+                        if(!self.image1Set)
+                        {
+                            if(self.shareOnFacebookSwitch.isOn)
+                            {
+                                self.isFacebookPostComplete = NO;
+                                [self postFacebookMessage:nil];
+                            }
+                            else
+                            {
+                                self.isFacebookPostComplete = YES;
+                            }
+                        }
+                        
+                        
                     }
                     else
                     {
+                        hasError = true;
                         sender.enabled = true;
                         [self presentViewController: [UIView createSimpleAlertWithMessage:@"Amount description is blank, please list how this item is sold ex.(each, per Lb., etc..)"andTitle:@"Error!" withOkButton:NO] animated: YES completion: nil];
                     }
                 }
                 else
                 {
+                    hasError = true;
                     sender.enabled = true;
                     [self presentViewController: [UIView createSimpleAlertWithMessage:@"Product amount is blank."andTitle:@"Error!" withOkButton:NO] animated: YES completion: nil];
                 }
             }
             else
             {
+                hasError = true;
                 sender.enabled = true;
                 [self presentViewController: [UIView createSimpleAlertWithMessage:@"Product description is blank."andTitle:@"Error!" withOkButton:NO] animated: YES completion: nil];
             }
         }
         else
         {
+            hasError = true;
             sender.enabled = true;
             [self presentViewController: [UIView createSimpleAlertWithMessage:@"Product title is blank."andTitle:@"Error!" withOkButton:NO] animated: YES completion: nil];
         }
@@ -466,34 +539,54 @@ UIImagePickerControllerDelegate, UINavigationControllerDelegate, ImageModelDeleg
         
         
     }
-    self.spinnerView.hidden = NO;
     
-    ImageModel *imageModel = [[ImageModel alloc]init];
-    imageModel.delegate = self;
-    
-    if(self.image1Set || self.image1Changed)
-        imageModel.imageCount++;
-    if(self.image2Set || self.image2Changed)
-        imageModel.imageCount++;
-    if(self.image3Set || self.image3Changed)
-        imageModel.imageCount++;
-    if(self.image4Set || self.image4Changed)
-        imageModel.imageCount++;
-    
-    for(int i = 1; i < 5; i++)
+    if(!hasError)
     {
+        self.spinnerView.hidden = NO;
         
-        NSString *fileName = [NSString stringWithFormat:@"%@_%i.png",productID,i];
+        ImageModel *imageModel = [[ImageModel alloc]init];
+        imageModel.delegate = self;
         
-        NSString *docDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) objectAtIndex:0];
+        if(self.image1Set || self.image1Changed)
+            imageModel.imageCount++;
+        if(self.image2Set || self.image2Changed)
+            imageModel.imageCount++;
+        if(self.image3Set || self.image3Changed)
+            imageModel.imageCount++;
+        if(self.image4Set || self.image4Changed)
+            imageModel.imageCount++;
         
-        NSString *pngFilePath = [NSString stringWithFormat:@"%@/%@",docDir,fileName];
-        
-                switch (i) {
-            case 1:
-                if(self.image1Set)
-                {
-                    if(self.image1Changed)
+        for(int i = 1; i < 5; i++)
+        {
+            
+            NSString *fileName = [NSString stringWithFormat:@"%@_%i.png",self.productID,i];
+            
+            NSString *docDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) objectAtIndex:0];
+            
+            NSString *pngFilePath = [NSString stringWithFormat:@"%@/%@",docDir,fileName];
+            
+            switch (i) {
+                case 1:
+                    if(self.image1Set)
+                    {
+                        if(self.image1Changed)
+                        {
+                            if([[NSFileManager defaultManager] fileExistsAtPath:pngFilePath])
+                            {
+                                
+                                [[NSFileManager defaultManager] removeItemAtPath:pngFilePath error:nil];
+                                
+                                
+                            }
+                            
+                            NSData *data = UIImagePNGRepresentation(self.image1);
+                            
+                            [imageModel saveproductImage:data forUser:self.userData.storageRef withName:[NSString stringWithFormat:@"%@_1", self.productID] forProduct:self.productID atIndex:1];
+                        }
+                        else
+                            imageModel.imageCount--;
+                    }
+                    else
                     {
                         if([[NSFileManager defaultManager] fileExistsAtPath:pngFilePath])
                         {
@@ -502,139 +595,131 @@ UIImagePickerControllerDelegate, UINavigationControllerDelegate, ImageModelDeleg
                             
                             
                         }
-
-                        NSData *data = UIImagePNGRepresentation(self.image1);
+                        if(!self.image1Changed)
+                            imageModel.imageCount++;
                         
-                        [imageModel saveproductImage:data forUser:self.userData.storageRef withName:[NSString stringWithFormat:@"%@_1", productID] forProduct:productID atIndex:1];
+                        [imageModel deleteProductImage:[NSString stringWithFormat:@"%@_1", self.productID] forProductID:self.productID forUser:self.userData.storageRef];
+                    }
+                    break;
+                case 2:
+                    if(self.image2Set)
+                    {
+                        if(self.image2Changed)
+                        {
+                            if([[NSFileManager defaultManager] fileExistsAtPath:pngFilePath])
+                            {
+                                
+                                [[NSFileManager defaultManager] removeItemAtPath:pngFilePath error:nil];
+                                
+                                
+                            }
+                            
+                            
+                            NSData *data = UIImagePNGRepresentation(self.image2);
+                            
+                            [imageModel saveproductImage:data forUser:self.userData.storageRef withName:[NSString stringWithFormat:@"%@_2", self.productID] forProduct:self.productID atIndex:2];
+                        }
+                        else
+                            imageModel.imageCount--;
                     }
                     else
-                        imageModel.imageCount--;
-                }
-                else
-                {
-                    if([[NSFileManager defaultManager] fileExistsAtPath:pngFilePath])
                     {
+                        if([[NSFileManager defaultManager] fileExistsAtPath:pngFilePath])
+                        {
+                            
+                            [[NSFileManager defaultManager] removeItemAtPath:pngFilePath error:nil];
+                            
+                            
+                        }
                         
-                        [[NSFileManager defaultManager] removeItemAtPath:pngFilePath error:nil];
-                        
-                        
+                        if(!self.image2Changed)
+                            imageModel.imageCount++;
+                        [imageModel deleteProductImage:[NSString stringWithFormat:@"%@_2", self.productID] forProductID:self.productID forUser:self.userData.storageRef];
                     }
-
+                    break;
+                case 3:
+                    if(self.image3Set)
+                    {
+                        if(self.image3Changed)
+                        {
+                            if([[NSFileManager defaultManager] fileExistsAtPath:pngFilePath])
+                            {
+                                
+                                [[NSFileManager defaultManager] removeItemAtPath:pngFilePath error:nil];
+                                
+                                
+                            }
+                            
+                            
+                            NSData *data = UIImagePNGRepresentation(self.image3);
+                            
+                            [imageModel saveproductImage:data forUser:self.userData.storageRef withName:[NSString stringWithFormat:@"%@_3", self.productID] forProduct:self.productID atIndex:3];
+                        }
+                        else
+                            imageModel.imageCount--;
+                    }
+                    else
+                    {
+                        if([[NSFileManager defaultManager] fileExistsAtPath:pngFilePath])
+                        {
+                            
+                            [[NSFileManager defaultManager] removeItemAtPath:pngFilePath error:nil];
+                            
+                            
+                        }
+                        
+                        if(!self.image3Changed)
+                            imageModel.imageCount++;
+                        [imageModel deleteProductImage:[NSString stringWithFormat:@"%@_3", self.productID] forProductID:self.productID forUser:self.userData.storageRef];
+                    }
+                    break;
+                case 4:
+                    if(self.image4Set)
+                    {
+                        if(self.image4Changed)
+                        {
+                            if([[NSFileManager defaultManager] fileExistsAtPath:pngFilePath])
+                            {
+                                
+                                [[NSFileManager defaultManager] removeItemAtPath:pngFilePath error:nil];
+                                
+                                
+                            }
+                            
+                            NSData *data = UIImagePNGRepresentation(self.image4);
+                            
+                            [imageModel saveproductImage:data forUser:self.userData.storageRef withName:[NSString stringWithFormat:@"%@_4", self.productID] forProduct:self.productID atIndex:4];
+                        }
+                        else
+                            imageModel.imageCount--;
+                    }
+                    else
+                    {
+                        if([[NSFileManager defaultManager] fileExistsAtPath:pngFilePath])
+                        {
+                            
+                            [[NSFileManager defaultManager] removeItemAtPath:pngFilePath error:nil];
+                            
+                            
+                        }
+                        
+                        if(!self.image4Changed)
+                            imageModel.imageCount++;
+                        [imageModel deleteProductImage:[NSString stringWithFormat:@"%@_4", self.productID] forProductID:self.productID forUser:self.userData.storageRef];
+                    }
+                    break;
                     
-                    [imageModel deleteProductImage:[NSString stringWithFormat:@"%@_1", productID] forProductID:productID forUser:self.userData.storageRef];
-                }
-                break;
-            case 2:
-                if(self.image2Set)
-                {
-                    if(self.image2Changed)
-                    {
-                        if([[NSFileManager defaultManager] fileExistsAtPath:pngFilePath])
-                        {
-                            
-                            [[NSFileManager defaultManager] removeItemAtPath:pngFilePath error:nil];
-                            
-                            
-                        }
-
-                        
-                        NSData *data = UIImagePNGRepresentation(self.image2);
-                        
-                       [imageModel saveproductImage:data forUser:self.userData.storageRef withName:[NSString stringWithFormat:@"%@_2", productID] forProduct:productID atIndex:2];
-                    }
-                    else
-                        imageModel.imageCount--;
-                }
-                else
-                {
-                    if([[NSFileManager defaultManager] fileExistsAtPath:pngFilePath])
-                    {
-                        
-                        [[NSFileManager defaultManager] removeItemAtPath:pngFilePath error:nil];
-                        
-                        
-                    }
-
-                    [imageModel deleteProductImage:[NSString stringWithFormat:@"%@_2", productID] forProductID:productID forUser:self.userData.storageRef];
-                }
-                break;
-            case 3:
-                if(self.image3Set)
-                {
-                    if(self.image3Changed)
-                    {
-                        if([[NSFileManager defaultManager] fileExistsAtPath:pngFilePath])
-                        {
-                            
-                            [[NSFileManager defaultManager] removeItemAtPath:pngFilePath error:nil];
-                            
-                            
-                        }
-
-                        
-                        NSData *data = UIImagePNGRepresentation(self.image3);
-                        
-                        [imageModel saveproductImage:data forUser:self.userData.storageRef withName:[NSString stringWithFormat:@"%@_3", productID] forProduct:productID atIndex:3];
-                    }
-                    else
-                        imageModel.imageCount--;
-                }
-                else
-                {
-                    if([[NSFileManager defaultManager] fileExistsAtPath:pngFilePath])
-                    {
-                        
-                        [[NSFileManager defaultManager] removeItemAtPath:pngFilePath error:nil];
-                        
-                        
-                    }
-
-                    [imageModel deleteProductImage:[NSString stringWithFormat:@"%@_3", productID] forProductID:productID forUser:self.userData.storageRef];
-                }
-                break;
-            case 4:
-                if(self.image4Set)
-                {
-                    if(self.image4Changed)
-                    {
-                        if([[NSFileManager defaultManager] fileExistsAtPath:pngFilePath])
-                        {
-                            
-                            [[NSFileManager defaultManager] removeItemAtPath:pngFilePath error:nil];
-                            
-                            
-                        }
-
-                        NSData *data = UIImagePNGRepresentation(self.image4);
-                        
-                       [imageModel saveproductImage:data forUser:self.userData.storageRef withName:[NSString stringWithFormat:@"%@_4", productID] forProduct:productID atIndex:4];
-                    }
-                    else
-                        imageModel.imageCount--;
-                }
-                else
-                {
-                    if([[NSFileManager defaultManager] fileExistsAtPath:pngFilePath])
-                    {
-                        
-                        [[NSFileManager defaultManager] removeItemAtPath:pngFilePath error:nil];
-                        
-                        
-                    }
-
-                    [imageModel deleteProductImage:[NSString stringWithFormat:@"%@_4", productID] forProductID:productID forUser:self.userData.storageRef];
-                }
-                break;
-                
+            }
+            
         }
-        
-    }
-    if(imageModel.imageCount == 0)
-    {
-        self.imagesComplete = YES;
-        [self notifyUser];
-    }
+        if(imageModel.imageCount == 0)
+        {
+            self.imagesComplete = YES;
+            [self notifyUser];
+        }
 
+    }
+    
     
     
     
@@ -775,8 +860,9 @@ UIImagePickerControllerDelegate, UINavigationControllerDelegate, ImageModelDeleg
 
 - (void)notifyUser
 {
-    if(self.firebaseComplete && self.imagesComplete)
+    if(self.firebaseComplete && self.imagesComplete && self.isFacebookPostComplete)
     {
+        self.progressBar.progress = 1.0;
         self.spinnerView.hidden = YES;
         NSString *title;
         NSString *message;
@@ -921,30 +1007,34 @@ UIImagePickerControllerDelegate, UINavigationControllerDelegate, ImageModelDeleg
     
     UIImage *image = [UIImage imageWithContentsOfFile:filePath];
     UIImage *newImage = [UIImage imageWithImage:image
-                                   scaledToSize:CGSizeMake(60, 60)];
+                                   scaledToSize:CGSizeMake(93, 60)];
     
     switch (imageNum) {
         case 1:
             self.image1 = image;
             self.image1Set = YES;
+            [self.productImage1.imageView setContentMode:UIViewContentModeCenter];
             [self.productImage1 setImage:newImage forState:UIControlStateNormal];
             self.productImage2.enabled = YES;
             break;
         case 2:
             self.image2 = image;
             self.image2Set = YES;
+            [self.productImage2.imageView setContentMode:UIViewContentModeCenter];
             [self.productImage2 setImage:newImage forState:UIControlStateNormal];
             self.productImage3.enabled = YES;
             break;
         case 3:
             self.image3 = image;
             self.image3Set = YES;
+            [self.productImage3.imageView setContentMode:UIViewContentModeCenter];
             [self.productImage3 setImage:newImage forState:UIControlStateNormal];
             self.productImage4.enabled = YES;
             break;
         case 4:
             self.image4 = image;
             self.image4Set = YES;
+            [self.productImage4.imageView setContentMode:UIViewContentModeCenter];
             [self.productImage4 setImage:newImage forState:UIControlStateNormal];
             break;
        
@@ -1021,32 +1111,80 @@ UIImagePickerControllerDelegate, UINavigationControllerDelegate, ImageModelDeleg
     [UIView commitAnimations];
 }
 
-- (void)postFacebookMessage:(NSString *)productID
+- (void)startFacebookSharing:(NSURL *)url isUserGenerated:(BOOL)userGenerated
+{
+    FBSDKSharePhoto *photo;
+    if(userGenerated)
+        photo = [FBSDKSharePhoto photoWithImage:self.originalImage1 userGenerated:YES];
+    else
+        photo = [FBSDKSharePhoto photoWithImageURL:url userGenerated:NO];
+    
+    NSDictionary *properties = @{
+                                 @"og:type": @"farmfreshns:farm_product",
+                                 @"og:title": [NSString stringWithFormat:@"%@ - %@", self.productHeadlineTextfield.text, self.userData.farmName],
+                                 @"og:description": self.productDescriptionTextview.text,
+                                 @"og:image": @[photo],
+                                 @"og:url": @"https://fb.me/1169058139821564",
+                                 @"farmfreshns:name": self.productHeadlineTextfield.text
+                                 };
+    FBSDKShareOpenGraphObject *object = [FBSDKShareOpenGraphObject objectWithProperties:properties];
+    
+    
+    
+    FBSDKShareOpenGraphAction *action = [[FBSDKShareOpenGraphAction alloc] init];
+    action.actionType = @"farmfreshns:product_posted";
+    [action setObject:object forKey:@"farm_product"];
+    [action setString:@"true" forKey:@"fb:explicitly_shared"];
+    [action setString:self.productHeadlineTextfield.text forKey:@"title"];
+    //[action setObject: @"true" forKey: @"fb:explicitly_shared"];
+    
+    FBSDKShareOpenGraphContent *content = [[FBSDKShareOpenGraphContent alloc] init];
+    content.action = action;
+    content.previewPropertyName = @"farm_product";
+    
+    FBSDKShareAPI *shareAPI = [[FBSDKShareAPI alloc] init];
+    
+    shareAPI.delegate = self;
+    shareAPI.shareContent = content;
+    
+    [shareAPI share];
+}
+
+- (void)postFacebookMessage:(NSURL *)url
 {
     
     if ([[FBSDKAccessToken currentAccessToken] hasGranted:@"publish_actions"]) {
         // TODO: publish content.
         
-        [[[FBSDKGraphRequest alloc]
-          initWithGraphPath:@"me/feed"
-          parameters: @{ @"message" : @"hello world"}
-          HTTPMethod:@"POST"]
-         startWithCompletionHandler:^(FBSDKGraphRequestConnection *connection, id result, NSError *error) {
-             if (!error) {
-                 NSLog(@"Post id:%@", result[@"id"]);
-             }
-         }];
-        /*
-        FBSDKSharePhoto *photo = [[FBSDKSharePhoto alloc] init];
-        photo.image = self.image1; // photo.image = self.shareImage;
-        photo.userGenerated = YES;
-        FBSDKSharePhotoContent *content = [[FBSDKSharePhotoContent alloc] init];
-        content.photos = @[photo];
-        FBSDKShareAPI * shareApi = [[FBSDKShareAPI alloc]init];
-        shareApi.message = [NSString stringWithFormat:@"%@ just added %@. Find it on the Farm Fresh App!", self.userData.farmName, self.productHeadlineTextfield.text]; // shareApi.message = self.tf.text;
-        shareApi.shareContent = content;
-        [shareApi share];
-        */
+        // Create a reference to the file you want to download
+        
+        NSString * link;
+        
+        if(self.image1Set)
+        {
+            [self startFacebookSharing: url isUserGenerated:NO];
+        }
+        else
+        {
+            link = @"appImages/farmFresh.png";
+        }
+            
+        FIRStorageReference *storageLinkRef = [[[FIRStorage storage] reference] child:link];
+        // Fetch the download URL
+        [storageLinkRef downloadURLWithCompletion:^(NSURL *URL, NSError *error){
+            if (error != nil) {
+                // Handle any errors
+            } else {
+                // Get the download URL for 'images/stars.jpg'
+                
+                [self startFacebookSharing:URL isUserGenerated:NO];
+               
+                
+            }
+        }];
+        
+        
+
     } else {
         FBSDKLoginManager *loginManager = [[FBSDKLoginManager alloc] init];
         [loginManager logInWithPublishPermissions:@[@"publish_actions"]
@@ -1056,15 +1194,20 @@ UIImagePickerControllerDelegate, UINavigationControllerDelegate, ImageModelDeleg
                                               
                                               if(!error)
                                               {
-                                                  [[[FBSDKGraphRequest alloc]
-                                                    initWithGraphPath:@"me/feed"
-                                                    parameters: @{ @"message" : @"hello world"}
-                                                    HTTPMethod:@"POST"]
-                                                   startWithCompletionHandler:^(FBSDKGraphRequestConnection *connection, id result, NSError *error) {
-                                                       if (!error) {
-                                                           NSLog(@"Post id:%@", result[@"id"]);
-                                                       }
-                                                   }];
+                                                  if ([[FBSDKAccessToken currentAccessToken] hasGranted:@"publish_actions"]) {
+                                                      
+                                                  [self postFacebookMessage:url];
+                                                  }
+                                                  else
+                                                  {
+                                                      self.isFacebookPostComplete = YES;
+                                                      [self notifyUser];
+                                                  }
+                                              }
+                                              else
+                                              {
+                                                  self.isFacebookPostComplete = YES;
+                                                  [self notifyUser];
                                               }
                                               
                                           }];
@@ -1075,15 +1218,65 @@ UIImagePickerControllerDelegate, UINavigationControllerDelegate, ImageModelDeleg
 
 #pragma mark - Delegate Methods
 
+- (void)imageUploadUpdate
+{
+    self.progressBar.progress = self.progressBar.progress + 0.1;
+}
+
+-(void)sharer:(id<FBSDKSharing>)sharer didCompleteWithResults:(NSDictionary *)results
+{
+    NSLog(@"%@", results);
+    [self.userData addFacebookPostIDToProduct:self.productID withPostID:results[@"postId"]];
+    [self imageUploadUpdate];
+    self.isFacebookPostComplete = YES;
+     [self notifyUser];
+}
+
+-(void)sharer:(id<FBSDKSharing>)sharer didFailWithError:(NSError *)error
+{
+    [self imageUploadUpdate];
+    NSLog(@"%@", error);
+    self.isFacebookPostComplete = YES;
+     [self notifyUser];
+}
+
+-(void)sharerDidCancel:(id<FBSDKSharing>)sharer
+{
+    [self imageUploadUpdate];
+    NSLog(@"Share Cancel");
+    self.isFacebookPostComplete = YES;
+    [self notifyUser];
+}
+
+- (void)imageUploadtCompleteFacebookReady:(NSURL *)url
+{
+    [self imageUploadUpdate];
+    
+    if(self.shareOnFacebookSwitch.isOn)
+    {
+        self.isFacebookPostComplete = NO;
+        [self postFacebookMessage:url];
+    }
+    else
+    {
+        self.isFacebookPostComplete = YES;
+        [self notifyUser];
+    }
+}
+
 - (void)imageUploadtCompleteForIndex:(int)index
 {
-    self.imagesComplete = YES;
-    [self notifyUser];
+    //if(index != 99)
+    //{
+        [self imageUploadUpdate];
+        self.imagesComplete = YES;
+        [self notifyUser];
+    //}
 }
 
 - (void)newProductAdded:(NSError *)error
 {
-    
+    [self imageUploadUpdate];
     if(!error)
     {
         self.firebaseComplete = YES;
@@ -1098,46 +1291,54 @@ UIImagePickerControllerDelegate, UINavigationControllerDelegate, ImageModelDeleg
 - (void)imagePickerController:(UIImagePickerController *)picker didFinishPickingMediaWithInfo:(NSDictionary *)info
 {
     self.userData.delegate = self;
-    UIImage *imagePicked = [UIImage cropImageWithInfo:info];
+    UIImage *imagePicked = [info objectForKey:UIImagePickerControllerOriginalImage];
     
-    UIImage *newImage = [UIImage imageWithImage:imagePicked
-                                   scaledToSize:CGSizeMake(60, 60)];
+    TOCropViewController *cropController = [[TOCropViewController alloc] initWithCroppingStyle:self.croppingStyle image:imagePicked];
+    cropController.delegate = self;
+    cropController.rotateButtonsHidden = YES;
+    cropController.aspectRatioPickerButtonHidden = YES;
+    
+    cropController.toolbar.resetButton.hidden = YES;
     
     
-    switch (self.currentImage) {
-        case 1:
-            self.image1Set = YES;
-            self.image1Changed = YES;
-            [self.productImage1 setImage:newImage forState:UIControlStateNormal];
-            self.productImage2.enabled = YES;
-            self.image1 = [UIImage imageWithImage:imagePicked scaledToSize:CGSizeMake(375, 242)];
-            break;
-        case 2:
-            self.image2Set = YES;
-            self.image2Changed = YES;
-            [self.productImage2 setImage:newImage forState:UIControlStateNormal];
-            self.productImage3.enabled = YES;
-            self.image2 = [UIImage imageWithImage:imagePicked scaledToSize:CGSizeMake(375, 242)];
-            break;
-        case 3:
-            self.image3Set = YES;
-            self.image3Changed = YES;
-            [self.productImage3 setImage:newImage forState:UIControlStateNormal];
-            self.productImage4.enabled = YES;
-            self.image3 = [UIImage imageWithImage:imagePicked scaledToSize:CGSizeMake(375, 242)];
-            break;
-        case 4:
-            self.image4Set = YES;
-            self.image4Changed = YES;
-            [self.productImage4 setImage:newImage forState:UIControlStateNormal];
-            self.image4 = [UIImage imageWithImage:imagePicked scaledToSize:CGSizeMake(375, 242)];
-            break;
+    // -- Uncomment these if you want to test out restoring to a previous crop setting --
+    //cropController.angle = 90; // The initial angle in which the image will be rotated
+    cropController.imageCropFrame = CGRectMake(0,0,375 * 5, 242 * 5); //The
+    
+    
+    // -- Uncomment the following lines of code to test out the aspect ratio features --
+    //cropController.aspectRatioPreset = TOCropViewControllerAspectRatioPresetCustom; //Set the initial aspect ratio as a square
+    cropController.aspectRatioLockEnabled = YES; // The crop box is locked to the aspect ratio and can't be resized away from it
+    cropController.resetAspectRatioEnabled = NO; // When tapping 'reset', the aspect ratio will NOT be reset back to default
+    
+    
+    // -- Uncomment this line of code to place the toolbar at the top of the view controller --
+    // cropController.toolbarPosition = TOCropViewControllerToolbarPositionTop;
+    
+    self.image = imagePicked;
+    
+    //If profile picture, push onto the same navigation stack
+    if (self.croppingStyle == TOCropViewCroppingStyleCircular) {
+        [picker pushViewController:cropController animated:YES];
+    }
+    else { //otherwise dismiss, and then present from the main controller
+        
+        
+        [picker presentViewController:cropController animated:YES completion:^{
             
-        default:
-            break;
+            //[picker dismissViewControllerAnimated:NO completion:^{
+                
+           // }];
+        }];
+        
+        
     }
     
+   
+    
     /*
+    
+    
     
     // Create path.
     NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
@@ -1157,9 +1358,11 @@ UIImagePickerControllerDelegate, UINavigationControllerDelegate, ImageModelDeleg
     else
         [ImageModel saveUserProfileImage:imageData forUser:self.userData];
     
-    */
+    
     
     [picker dismissViewControllerAnimated:YES completion:nil];
+     
+     */
 }
 
 - (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker
@@ -1167,6 +1370,83 @@ UIImagePickerControllerDelegate, UINavigationControllerDelegate, ImageModelDeleg
     self.userData.delegate = self;
     
     [picker dismissViewControllerAnimated:YES completion:NULL];
+}
+
+#pragma mark - Cropper Delegate -
+- (void)cropViewController:(TOCropViewController *)cropViewController didCropToImage:(UIImage *)image withRect:(CGRect)cropRect angle:(NSInteger)angle
+{
+    self.croppedFrame = cropRect;
+    self.angle = angle;
+    [self updateImageViewWithImage:image fromCropViewController:cropViewController];
+}
+
+- (void)cropViewController:(TOCropViewController *)cropViewController didCropToCircularImage:(UIImage *)image withRect:(CGRect)cropRect angle:(NSInteger)angle
+{
+    self.croppedFrame = cropRect;
+    self.angle = angle;
+    [self updateImageViewWithImage:image fromCropViewController:cropViewController];
+}
+
+- (void)updateImageViewWithImage:(UIImage *)image fromCropViewController:(TOCropViewController *)cropViewController
+{
+    UIImage *imagePicked = image;
+   
+    //[UIImage cropImageWithInfo:info];
+    
+     NSLog(@"%f,%f", imagePicked.size.height, imagePicked.size.width);
+     
+     UIImage *newImage = [UIImage imageWithImage:imagePicked
+     scaledToSize:CGSizeMake(93, 60)];
+     
+     NSLog(@"%f,%f", newImage.size.height, newImage.size.width);
+     
+     switch (self.currentImage) {
+     case 1:
+     self.originalImage1 = [UIImage imageWithImage:imagePicked scaledToSize:CGSizeMake(180,180)];
+     self.image1Set = YES;
+     self.image1Changed = YES;
+     [self.productImage1.imageView setContentMode:UIViewContentModeCenter];
+     [self.productImage1 setImage:newImage forState:UIControlStateNormal];
+     self.productImage2.enabled = YES;
+     self.image1 = [UIImage imageWithImage:imagePicked scaledToSize:CGSizeMake(375, 242)];
+     NSLog(@"%f,%f", self.image1.size.height, self.image1.size.width);
+     break;
+     case 2:
+     self.image2Set = YES;
+     self.image2Changed = YES;
+     [self.productImage2.imageView setContentMode:UIViewContentModeCenter];
+     [self.productImage2 setImage:newImage forState:UIControlStateNormal];
+     self.productImage3.enabled = YES;
+     self.image2 = [UIImage imageWithImage:imagePicked scaledToSize:CGSizeMake(375, 242)];
+     break;
+     case 3:
+     self.image3Set = YES;
+     self.image3Changed = YES;
+     [self.productImage3.imageView setContentMode:UIViewContentModeCenter];
+     [self.productImage3 setImage:newImage forState:UIControlStateNormal];
+     self.productImage4.enabled = YES;
+     self.image3 = [UIImage imageWithImage:imagePicked scaledToSize:CGSizeMake(375, 242)];
+     break;
+     case 4:
+     self.image4Set = YES;
+     self.image4Changed = YES;
+     [self.productImage4.imageView setContentMode:UIViewContentModeCenter];
+     [self.productImage4 setImage:newImage forState:UIControlStateNormal];
+     self.image4 = [UIImage imageWithImage:imagePicked scaledToSize:CGSizeMake(375, 242)];
+     break;
+     
+     default:
+     break;
+     }
+    
+   
+    [cropViewController.presentingViewController dismissViewControllerAnimated:YES completion:^{
+        [self.imagePicker dismissViewControllerAnimated:YES completion:^{
+            
+             }];
+    }];
+    
+
 }
 
 - (void)categoriesUpdated

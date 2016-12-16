@@ -11,14 +11,17 @@
 #import "HelperMethods.h"
 #import "SwipeableTableViewCell.h"
 #import "UIView+AddOns.h"
+#import <FBSDKShareKit/FBSDKShareKit.h>
 
-@interface EditProductViewController ()<UITableViewDelegate, UITableViewDataSource, SwipeableTableViewCellDelegate, UserModelDelegate>
+@interface EditProductViewController ()<UITableViewDelegate, UITableViewDataSource, SwipeableTableViewCellDelegate, UserModelDelegate, FBSDKSharingDelegate>
 
 @property (nonatomic, strong) NSArray *products;
 @property (weak, nonatomic) IBOutlet UITableView *productsTableView;
 @property (nonatomic, strong) NSDictionary *productSelected;
 @property (nonatomic, strong) NSDate *expireDate;
 @property (nonatomic) BOOL waitToRefreshTableview;
+@property (nonatomic) BOOL image1Set;
+@property (nonatomic, strong) UIImage *image1;
 
 @end
 
@@ -115,7 +118,200 @@
     
 }
 
+- (void)startFacebookSharing:(NSURL *)url isUserGenerated:(BOOL)userGenerated
+{
+    FBSDKSharePhoto *photo;
+    if(userGenerated)
+        photo = [FBSDKSharePhoto photoWithImage:self.image1 userGenerated:YES];
+    else
+        photo = [FBSDKSharePhoto photoWithImageURL:url userGenerated:NO];
+    
+    NSDictionary *properties = @{
+                                 @"og:type": @"farmfreshns:farm_product",
+                                 @"og:title": [NSString stringWithFormat:@"%@ - %@", self.productSelected[@"productHeadline"], self.userData.farmName],
+                                 @"og:description": self.productSelected[@"productDescription"],
+                                 @"og:image": @[photo],
+                                 @"og:url": @"https://fb.me/1169058139821564",
+                                 @"farmfreshns:name": self.productSelected[@"productHeadline"]
+                                 };
+    FBSDKShareOpenGraphObject *object = [FBSDKShareOpenGraphObject objectWithProperties:properties];
+    
+    
+    
+    FBSDKShareOpenGraphAction *action = [[FBSDKShareOpenGraphAction alloc] init];
+    action.actionType = @"farmfreshns:product_posted";
+    [action setObject:object forKey:@"farm_product"];
+    [action setString:@"true" forKey:@"fb:explicitly_shared"];
+    [action setString:self.productSelected[@"productHeadline"] forKey:@"title"];
+    //[action setObject: @"true" forKey: @"fb:explicitly_shared"];
+    
+    FBSDKShareOpenGraphContent *content = [[FBSDKShareOpenGraphContent alloc] init];
+    content.action = action;
+    content.previewPropertyName = @"farm_product";
+    
+    FBSDKShareAPI *shareAPI = [[FBSDKShareAPI alloc] init];
+    
+    shareAPI.delegate = self;
+    shareAPI.shareContent = content;
+    
+    [shareAPI share];
+}
+
+- (void)loadImagesForFacebookPost
+{
+    NSString *productID = self.productSelected[@"productID"];
+    
+    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+    NSString *filePath = [[paths objectAtIndex:0] stringByAppendingPathComponent:[NSString stringWithFormat:@"%@_%d.png", productID, 1]];
+    
+    if(![[NSFileManager defaultManager] fileExistsAtPath:filePath])
+    {
+        // Create a reference to the file you want to download
+        FIRStorageReference *fileRef = [[[FIRStorage storage] reference] child:[NSString stringWithFormat:@"%@/farm/products/%@/images/%@_%d.png", self.userData.user.uid, productID, productID, 1]];
+        
+        // Download in memory with a maximum allowed size of 1MB (1 * 1024 * 1024 bytes)
+        [fileRef dataWithMaxSize:1 * 1024 * 1024 completion:^(NSData *data, NSError *error){
+            if (error != nil) {
+                
+                [self setPreviewImageToDefault:1];
+            } else {
+                
+                [data writeToFile:filePath atomically:YES];
+                
+                [self setPreviewImage:1 fromPath:filePath];
+                
+            }
+        }];
+    }
+    else
+    {
+        [self setPreviewImage:1 fromPath:filePath];
+    }
+        
+    
+}
+
+- (void)setPreviewImageToDefault:(int)imageNum
+{
+    switch (imageNum) {
+        case 1:
+            self.image1Set = NO;
+            break;
+            
+    }
+    
+    [self postFacebookMessage:nil];
+}
+
+- (void)setPreviewImage:(int)imageNum fromPath:(NSString *)filePath
+{
+    
+    UIImage *image = [UIImage imageWithContentsOfFile:filePath];
+    
+    switch (imageNum) {
+        case 1:
+            self.image1 = image;
+            self.image1Set = YES;
+            break;
+            
+    }
+    
+    [self postFacebookMessage:nil];
+}
+
+- (void)postFacebookMessage:(NSURL *)url
+{
+    
+    if ([[FBSDKAccessToken currentAccessToken] hasGranted:@"publish_actions"]) {
+        // TODO: publish content.
+        
+        // Create a reference to the file you want to download
+        
+        NSString * link;
+        
+        
+        if(self.image1Set)
+        {
+            [self startFacebookSharing: url isUserGenerated:NO];
+        }
+        else
+        {
+            link = @"appImages/farmFresh.png";
+        }
+        
+        FIRStorageReference *storageLinkRef = [[[FIRStorage storage] reference] child:link];
+        // Fetch the download URL
+        [storageLinkRef downloadURLWithCompletion:^(NSURL *URL, NSError *error){
+            if (error != nil) {
+                // Handle any errors
+            } else {
+                // Get the download URL for 'images/stars.jpg'
+                
+                [self startFacebookSharing:URL isUserGenerated:NO];
+                
+                
+            }
+        }];
+        
+        
+        
+    } else {
+        FBSDKLoginManager *loginManager = [[FBSDKLoginManager alloc] init];
+        [loginManager logInWithPublishPermissions:@[@"publish_actions"]
+                               fromViewController:self
+                                          handler:^(FBSDKLoginManagerLoginResult *result, NSError *error) {
+                                              //TODO: process error or result.
+                                              
+                                              if(!error)
+                                              {
+                                                  if ([[FBSDKAccessToken currentAccessToken] hasGranted:@"publish_actions"]) {
+                                                      
+                                                      [self postFacebookMessage:url];
+                                                  }
+                                                  else
+                                                  {
+                                                      //self.isFacebookPostComplete = YES;
+                                                      //[self notifyUser];
+                                                  }
+                                              }
+                                              else
+                                              {
+                                                  //self.isFacebookPostComplete = YES;
+                                                  //[self notifyUser];
+                                              }
+                                              
+                                          }];
+    }
+    
+    
+}
+
 #pragma mark - Delegate Methods
+
+-(void)sharer:(id<FBSDKSharing>)sharer didCompleteWithResults:(NSDictionary *)results
+{
+    NSLog(@"%@", results);
+    [self.userData addFacebookPostIDToProduct:self.productSelected[@"productID"] withPostID:results[@"postId"]];
+    //[self imageUploadUpdate];
+    //self.isFacebookPostComplete = YES;
+    //[self notifyUser];
+}
+
+-(void)sharer:(id<FBSDKSharing>)sharer didFailWithError:(NSError *)error
+{
+    //[self imageUploadUpdate];
+    NSLog(@"%@", error);
+    //self.isFacebookPostComplete = YES;
+    //[self notifyUser];
+}
+
+-(void)sharerDidCancel:(id<FBSDKSharing>)sharer
+{
+    //[self imageUploadUpdate];
+    NSLog(@"Share Cancel");
+    //self.isFacebookPostComplete = YES;
+    //[self notifyUser];
+}
 
 - (void)newProductAdded:(NSError *)error
 {
@@ -127,7 +323,7 @@
                                                                       }];
         
         NSString *title = @"Re-List Product";
-        NSString *message = [NSString stringWithFormat:@"%@ relisted successfully and will expire on %@", self.productSelected[@"productHeadline"], [HelperMethods formatExpireDate: self.expireDate]];
+        NSString *message = [NSString stringWithFormat:@"%@ relisted successfully and will expire on %@ - Would you like to publish this on Facebook?", self.productSelected[@"productHeadline"], [HelperMethods formatExpireDate: self.expireDate]];
         
         
         UIAlertController *alertController = [UIAlertController
@@ -135,9 +331,19 @@
                                               message:message
                                               preferredStyle:UIAlertControllerStyleAlert];
         
+        UIAlertAction *facebookAction = [UIAlertAction actionWithTitle:@"Publish to Facebook" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+            
+            //publish to facebook
+            
+            [self loadImagesForFacebookPost];
+            
+            self.waitToRefreshTableview = NO;
+            [self farmProductUpdated];
+            
+        }];
         
         UIAlertAction *okAction = [UIAlertAction
-                                   actionWithTitle:NSLocalizedString(@"OK", @"OK action")
+                                   actionWithTitle:@"Cancel"
                                    style:UIAlertActionStyleDefault
                                    handler:^(UIAlertAction *action)
                                    {
@@ -146,6 +352,7 @@
                                        
                                    }];
         
+        [alertController addAction:facebookAction];
         [alertController addAction: okAction];
         
         [self presentViewController:alertController animated:YES completion:nil];

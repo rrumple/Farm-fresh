@@ -211,6 +211,7 @@ didDisconnectWithUser:(GIDGoogleUser *)user
                             
                             //Start Logging In Spinner
                             
+                            [self.userData checkSearchTimer];
                             
                             if (user) {
                                 id<FIRUserInfo> profile;

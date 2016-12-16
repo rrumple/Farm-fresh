@@ -21,6 +21,8 @@
 
 @property (nonatomic, weak) id<UserModelDelegate> delegate;
 
+@property (nonatomic) int favoriteSearchTimerCount;
+@property (nonatomic) BOOL isSearchTimerRunning;
 @property (nonatomic) int provider;
 @property (nonatomic) BOOL isUserLoggedIn;
 @property (nonatomic, strong) NSString *firstName;
@@ -76,7 +78,6 @@
 @property (nonatomic, strong) NSMutableArray *chatFollowers;
 @property (nonatomic, strong) NSMutableArray *chatList;
 @property (nonatomic, strong) NSMutableArray * notifications;
-
 @property (nonatomic, strong) NSDictionary *singleProductSearchResult;
 
 - (void)updateUserStatus;
@@ -86,7 +87,7 @@
 - (void)updateFarmerStatus:(BOOL)isFarmer;
 - (void)updateUseCustomProfileImage:(BOOL)useCustomImage;
 - (void)updateFarmDescription:(NSString *)string;
-- (void)updateCityForUser:(CLLocation *)coords;
+- (void)updateCityForUser:(CLLocation *)coords withCityName:(NSString *)cityName;
 - (void)addLocationToFarm:(NSDictionary *)locationData withCoords:(CLLocation *)coords;
 - (double)geoQueryforProducts:(CLLocation *)userLocation;
 - (void)updateUserLocation:(CLLocation *)userLoc;
@@ -95,7 +96,7 @@
 - (NSString *)addProductToFarm:(NSDictionary *)productData;
 - (void)updateProduct:(NSString *)productID withData:(NSDictionary *)productData;
 
-
+- (void)checkSearchTimer;
 - (void)changeRadius:(float)radius;
 
 - (double)getCurrentSearchRadius;
@@ -144,6 +145,8 @@
 - (void)loadSingleProductFromDatabase;
 - (void)updateNotificationsStatus:(NSString *)userIDSelected;
 
+-(void)addFacebookPostIDToProduct:(NSString *)productID withPostID:(NSString *)postID;
+
 @end
 
 @protocol UserModelDelegate <NSObject>
@@ -168,6 +171,9 @@
 - (void)notificationsLoaded:(NSArray *)notificaitons;
 - (void)updateMyScheduleComplete;
 - (void)searchCompleted;
+- (void)postStatusMessage:(NSString *)message;
+- (void)favoriteFarmersUpdateFailed;
+- (void)cityUpdated;
 @required
 
 @end

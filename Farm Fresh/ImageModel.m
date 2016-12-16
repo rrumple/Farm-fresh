@@ -88,6 +88,10 @@
     [fileRef putData:data metadata:metadata completion:^(FIRStorageMetadata *metadata, NSError *error) {
         self.imagesComplete++;
         
+        NSLog(@"Image %i upload Complete", index);
+        if([self.delegate respondsToSelector:@selector(imageUploadUpdate)])
+            [self.delegate imageUploadUpdate];
+        
         if(self.imagesComplete == self.imageCount)
         {
             if([self.delegate respondsToSelector:@selector(imageUploadtCompleteForIndex:)])
@@ -96,6 +100,13 @@
         if (error != nil) {
             // Uh-oh, an error occurred!
         } else {
+            
+            if(index == 1)
+            {
+                NSURL *downloadURL = metadata.downloadURL;
+                if([self.delegate respondsToSelector:@selector(imageUploadtCompleteFacebookReady:)])
+                    [self.delegate imageUploadtCompleteFacebookReady:downloadURL];
+            }
             // Metadata contains file metadata such as size, content-type, and download URL.
             //NSURL *downloadURL = metadata.downloadURL;
             
@@ -115,7 +126,7 @@
         if(self.imagesComplete == self.imageCount)
         {
             if([self.delegate respondsToSelector:@selector(imageUploadtCompleteForIndex:)])
-                [self.delegate imageUploadtCompleteForIndex:0];
+                [self.delegate imageUploadtCompleteForIndex:99];
         }
         if (error != nil) {
             // Uh-oh, an error occurred!

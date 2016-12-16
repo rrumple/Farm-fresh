@@ -25,6 +25,7 @@
 
 @property (nonatomic) int searchRetries;
 
+@property (nonatomic, strong) NSTimer *searchTimer;
 
 
 
@@ -59,10 +60,10 @@
     
         FIRDatabaseReference *geoFireRef = [self.ref child:@"_geofire"];
         FIRDatabaseReference *geoFireCities = [self.ref child:@"_geofire_cities"];
-        
+        self.favoriteSearchTimerCount = 0;
         self.geoFire = [[GeoFire alloc] initWithFirebaseRef:geoFireRef];
         self.geoFireCities = [[GeoFire alloc]initWithFirebaseRef:geoFireCities];
-        
+        self.isSearchTimerRunning = NO;
         self.searchRadius = 8.046720 * 4; // 5 * 4 = 20miles
         self.searchResults = [[NSArray alloc]init];
         self.searchResultsFarmers = [[NSMutableDictionary alloc]init];
@@ -90,6 +91,7 @@
 
 - (void)userSignedOut
 {
+    [self checkSearchTimer];
     
     if(!self.firstName && !self.lastName && !self.user.uid)
     {
@@ -231,6 +233,10 @@
                 
             }
             
+            if([self.delegate respondsToSelector:@selector(postStatusMessage:)])
+            {
+                [self.delegate postStatusMessage:[NSString stringWithFormat:@"%lu", (unsigned long)newFavorites.count]];
+            }
             self.favorites = newFavorites;
             [self updateFavoriteFarmersData];
             
@@ -956,12 +962,29 @@
 
 }
 
-- (void)updateCityForUser:(CLLocation *)coords
+- (void)updateCityForUser:(CLLocation *)coords withCityName:(NSString *)cityName
 {
+    
+    
+    NSString *keyString = [[NSString stringWithFormat:@"%.12g%.12g", coords.coordinate.latitude, coords.coordinate.longitude] lowercaseString];
+    //keyString = [keyString stringByReplacingOccurrencesOfString:@"+" withString:@"pos"];
+    //keyString = [keyString stringByReplacingOccurrencesOfString:@"-" withString:@"neg"];
+    keyString = [keyString stringByReplacingOccurrencesOfString:@"." withString:@"_"];
+    
+    FIRDatabaseReference *cityRef = [self.ref child:[NSString stringWithFormat:@"/cities/%@", keyString]];
+    
+    [cityRef setValue:cityName withCompletionBlock:^(NSError * _Nullable error, FIRDatabaseReference * _Nonnull ref) {
+        
+        
+    }];
+
+    
     [self.geoFireCities setLocation:coords forKey:self.user.uid withCompletionBlock:^(NSError *error) {
         if (error != nil) {
+            
             NSLog(@"An error occurred: %@", error);
         } else {
+            
             NSLog(@"Saved location successfully!");
         }
     }];
@@ -1302,6 +1325,11 @@
 {
     self.favoriteCounter--;
     
+    if([self.delegate respondsToSelector:@selector(postStatusMessage:)])
+    {
+        [self.delegate postStatusMessage:[NSString stringWithFormat:@"Favorite Counter = %i", self.favoriteCounter]];
+    }
+    
     if(self.favoriteCounter == 0)
     {
         if([self.delegate respondsToSelector:@selector(favoriteFarmersUpdated)])
@@ -1492,10 +1520,31 @@
                     
                     NSLog(@"No messages");
                     
+                    NSDictionary *schedule = farmerData[@"schedule"];
+                    
+                    NSArray *keys = schedule.allKeys;
+                    
+                    for(NSString *key in keys)
+                    {
+                        NSLog(@"%@", key);
+                        
+                        if([locationData[@"locationID"] isEqualToString:schedule[key][@"locationID"]])
+                        {
+                            [self.searchResultsLocations setObject:locationData forKey:farmerData[@"farmerID"]];
+                            [self.searchResultsFarmers setObject:farmerData forKey:farmerData[@"farmerID"]];
+                            
+                            [self addProductsForFarmerID:farmerData[@"farmerID"] distanceInfo:distanceInfo];
+                            break;
+                        }
+                    }
+                    
+                    /*
+                    
                     [self.searchResultsLocations setObject:locationData forKey:farmerData[@"farmerID"]];
                     [self.searchResultsFarmers setObject:farmerData forKey:farmerData[@"farmerID"]];
                     
                     [self addProductsForFarmerID:farmerData[@"farmerID"] distanceInfo:distanceInfo];
+                     */
                     
                     [self checkSearchCounter];
                 } else {
@@ -1736,6 +1785,16 @@
 {
     
     [NSTimer scheduledTimerWithTimeInterval:2.5 target:self selector:@selector(checkTimer) userInfo:nil repeats:NO];
+    
+    self.isSearchTimerRunning = YES;
+    self.searchTimer = [NSTimer scheduledTimerWithTimeInterval:60.0 target:self selector:@selector(checkSearchTimer) userInfo:nil repeats:NO];
+}
+
+- (void)checkSearchTimer
+{
+    [self.searchTimer invalidate];
+    
+    self.isSearchTimerRunning = NO;
 }
 
 - (double)geoQueryforProducts:(CLLocation *)userLocation
@@ -1743,7 +1802,7 @@
 
     double radiusUsed;
     
-    if(!self.searchStarted)
+    if(!self.searchStarted && !self.isSearchTimerRunning)
     {
         
         //[self startSerchTimer];
@@ -2169,172 +2228,201 @@
 - (void)updateFavoriteFarmersData
 {
     
-    self.favoriteFarmersData = [[NSMutableArray alloc]init];
     
-    NSArray *favoriteKeys = self.favorites.allKeys;
-    
-    FIRDatabaseReference *farmerRef = [self.ref child:@"/farms"];
-    
-    self.favoriteCounter += (int)favoriteKeys.count;
-    
-    for(NSString *key in favoriteKeys)
+    if(self.favorites.allKeys.count == 0)
     {
-        
-      
-        
-        [[farmerRef child:key] observeSingleEventOfType:FIRDataEventTypeValue withBlock:^(FIRDataSnapshot *snapshot3) {
+        if(self.favoriteSearchTimerCount <= 7)
+        {
+            self.favoriteSearchTimerCount++;
+              [NSTimer timerWithTimeInterval:0.5 target:self selector:@selector(updateFavoriteFarmersData) userInfo:nil repeats:NO];
             
-            if(snapshot3.value == [NSNull null]) {
-                NSLog(@"No messages");
+        }
+        else
+        {
+            self.favoriteSearchTimerCount = 0;
+            if([self.delegate respondsToSelector:@selector(favoriteFarmersUpdateFailed)])
+            {
+                [self.delegate favoriteFarmersUpdateFailed];
+            }
+        }
+      
+    }
+    else
+    {
+        self.favoriteSearchTimerCount = 0;
+        self.favoriteFarmersData = [[NSMutableArray alloc]init];
+        
+        NSArray *favoriteKeys = self.favorites.allKeys;
+        
+        FIRDatabaseReference *farmerRef = [self.ref child:@"/farms"];
+        
+        self.favoriteCounter += (int)favoriteKeys.count;
+        
+        for(NSString *key in favoriteKeys)
+        {
+            
+            
+            
+            [[farmerRef child:key] observeSingleEventOfType:FIRDataEventTypeValue withBlock:^(FIRDataSnapshot *snapshot3) {
                 
-            } else {
-                
-                NSDictionary *value2 = snapshot3.value;
-                
-                NSDictionary *tempDic2 = value2;
-                NSDictionary *schedule;
-                NSString *activeLocation;
-                NSMutableArray *locations = [[NSMutableArray alloc]init];
-                
-                if([tempDic2 objectForKey:@"schedule"])
-                {
-                    if([[tempDic2 objectForKey:@"schedule"] isKindOfClass:[NSArray class]])
+                if(snapshot3.value == [NSNull null]) {
+                    NSLog(@"No messages");
+                    
+                } else {
+                    
+                    NSDictionary *value2 = snapshot3.value;
+                    
+                    NSDictionary *tempDic2 = value2;
+                    NSDictionary *schedule;
+                    NSString *activeLocation;
+                    NSMutableArray *locations = [[NSMutableArray alloc]init];
+                    
+                    if([tempDic2 objectForKey:@"schedule"])
                     {
-                        NSArray *tempArray = [tempDic2 objectForKey:@"schedule"];
-                        NSMutableDictionary *tempdic = [[NSMutableDictionary alloc]init];
-                        NSLog(@"is Array");
-                        for(int i = 0; i < tempArray.count; i++)
+                        if([[tempDic2 objectForKey:@"schedule"] isKindOfClass:[NSArray class]])
                         {
-                            if([tempArray objectAtIndex:i] != [NSNull null])
+                            NSArray *tempArray = [tempDic2 objectForKey:@"schedule"];
+                            NSMutableDictionary *tempdic = [[NSMutableDictionary alloc]init];
+                            NSLog(@"is Array");
+                            for(int i = 0; i < tempArray.count; i++)
                             {
-                                if([HelperMethods getWeekday] == i)
+                                if([tempArray objectAtIndex:i] != [NSNull null])
                                 {
-                                    activeLocation = [[tempArray objectAtIndex:i]objectForKey:@"locationID"];
+                                    if([HelperMethods getWeekday] == i)
+                                    {
+                                        activeLocation = [[tempArray objectAtIndex:i]objectForKey:@"locationID"];
+                                    }
+                                    [tempdic setObject:[tempArray objectAtIndex:i] forKey:[NSString stringWithFormat:@"%d", i]];
                                 }
-                                [tempdic setObject:[tempArray objectAtIndex:i] forKey:[NSString stringWithFormat:@"%d", i]];
                             }
+                            schedule = tempdic;
                         }
-                        schedule = tempdic;
-                    }
-                    else if([[tempDic2 objectForKey:@"schedule"] isKindOfClass:[NSDictionary class]])
-                    {
-                        
-                        schedule = (NSDictionary*)[tempDic2 objectForKey:@"schedule"];
-                        activeLocation = [[schedule objectForKey:[NSString stringWithFormat:@"%ld",(long)[HelperMethods getWeekday]]]objectForKey:@"locationID"];
-                    }
-                    
-                    NSArray *keys = schedule.allKeys;
-                    
-                    for(NSString *key in keys)
-                    {
-                        NSDictionary *dic = [schedule objectForKey:key];
-                        
-                        BOOL exists = NO;
-                        
-                        for(NSString *string in locations)
+                        else if([[tempDic2 objectForKey:@"schedule"] isKindOfClass:[NSDictionary class]])
                         {
-                            if([string isEqualToString:dic[@"locationID"]])
-                            {
-                                exists = YES;
-                                break;
-                            }
+                            
+                            schedule = (NSDictionary*)[tempDic2 objectForKey:@"schedule"];
+                            activeLocation = [[schedule objectForKey:[NSString stringWithFormat:@"%ld",(long)[HelperMethods getWeekday]]]objectForKey:@"locationID"];
                         }
                         
-                        if(!exists)
-                           [locations addObject:dic[@"locationID"]];
-                    }
-                    
-                    if(locations.count > 0)
-                    {
-                        self.favoriteCounter += (int)locations.count;
+                        NSArray *keys = schedule.allKeys;
                         
-                     for(NSString *location in locations)
-                     {
-                         
-                         //get location data
-                         
-                         FIRDatabaseReference *farmerLocationRef = [self.ref child:[NSString stringWithFormat:@"/locations/%@", location]];
-                         
-                         
-                         
-                         [farmerLocationRef observeSingleEventOfType:FIRDataEventTypeValue withBlock:^(FIRDataSnapshot *snapshot4) {
-                             
-                             if(snapshot4.value == [NSNull null]) {
-                                 NSLog(@"No messages");
-                                 
-                                 
-                             } else {
-                                 
-                                 NSDictionary *value3 = snapshot4.value;
-                                 
-                                 NSDictionary *tempDic3 = value3;
-                                 
-                                 CLLocation *farmLocation = [[CLLocation alloc]initWithLatitude:[tempDic3[@"latitude"] floatValue] longitude:[tempDic3[@"longitude"]floatValue]];
-                                 
-                                 double distanceToFarm = [self getDistanceFromUser:farmLocation];
-                                 
-                                 NSString *distanceToFarmString;
-                                 if(distanceToFarm >= 50.0)
-                                     distanceToFarmString = @">50 mi";
-                                 else
-                                     distanceToFarmString = [NSString stringWithFormat:@"%0.2f mi", distanceToFarm];
-                                 
-                                 [self.favoriteFarmersLocations setObject:@{
-                                                                            @"farmerID" : tempDic3[@"farmerID"],
-                                                                            @"fullAddress" : tempDic3[@"fullAddress"],
-                                                                            @"latitude" : tempDic3[@"latitude"],
-                                                                            @"longitude" : tempDic3[@"longitude"],
-                                                                            @"locationName" : tempDic3[@"locationName"],
-                                                                            @"locationID" : location,
-                                                                            @"distanceToFarm" : [NSString stringWithFormat:@"%f",distanceToFarm],
-                                                                            @"distanceToFarmString" : distanceToFarmString
-                                                                            } forKey:location];
-                                 
-                                 
+                        for(NSString *key in keys)
+                        {
+                            NSDictionary *dic = [schedule objectForKey:key];
+                            
+                            BOOL exists = NO;
+                            
+                            for(NSString *string in locations)
+                            {
+                                if([string isEqualToString:dic[@"locationID"]])
+                                {
+                                    exists = YES;
+                                    break;
+                                }
+                            }
+                            
+                            if(!exists)
+                                [locations addObject:dic[@"locationID"]];
+                        }
+                        
+                        if(locations.count > 0)
+                        {
+                            self.favoriteCounter += (int)locations.count;
+                            
+                            for(NSString *location in locations)
+                            {
                                 
-                             }
-                            [self checkFavoriteCounter]; 
-                         }];
-                         
-                         
-                     }
+                                //get location data
+                                
+                                FIRDatabaseReference *farmerLocationRef = [self.ref child:[NSString stringWithFormat:@"/locations/%@", location]];
+                                
+                                
+                                
+                                [farmerLocationRef observeSingleEventOfType:FIRDataEventTypeValue withBlock:^(FIRDataSnapshot *snapshot4) {
+                                    
+                                    if(snapshot4.value == [NSNull null]) {
+                                        NSLog(@"No messages");
+                                        
+                                        
+                                    } else {
+                                        
+                                        NSDictionary *value3 = snapshot4.value;
+                                        
+                                        NSDictionary *tempDic3 = value3;
+                                        
+                                        CLLocation *farmLocation = [[CLLocation alloc]initWithLatitude:[tempDic3[@"latitude"] floatValue] longitude:[tempDic3[@"longitude"]floatValue]];
+                                        
+                                        double distanceToFarm = [self getDistanceFromUser:farmLocation];
+                                        
+                                        NSString *distanceToFarmString;
+                                        if(distanceToFarm >= 50.0)
+                                            distanceToFarmString = @">50 mi";
+                                        else
+                                            distanceToFarmString = [NSString stringWithFormat:@"%0.2f mi", distanceToFarm];
+                                        
+                                        [self.favoriteFarmersLocations setObject:@{
+                                                                                   @"farmerID" : tempDic3[@"farmerID"],
+                                                                                   @"fullAddress" : tempDic3[@"fullAddress"],
+                                                                                   @"latitude" : tempDic3[@"latitude"],
+                                                                                   @"longitude" : tempDic3[@"longitude"],
+                                                                                   @"locationName" : tempDic3[@"locationName"],
+                                                                                   @"locationID" : location,
+                                                                                   @"distanceToFarm" : [NSString stringWithFormat:@"%f",distanceToFarm],
+                                                                                   @"distanceToFarmString" : distanceToFarmString
+                                                                                   } forKey:location];
+                                        
+                                        
+                                        
+                                    }
+                                    [self checkFavoriteCounter];
+                                }];
+                                
+                                
+                            }
+                            
+                        }
                         
                     }
+                    else
+                        schedule = [[NSDictionary alloc]init];
+                    
+                    if(!activeLocation)
+                        activeLocation = @"";
+                    
+                    [self.favoriteFarmersData addObject: @{
+                                                           @"farmerID" : key,
+                                                           @"address" : tempDic2[@"address"],
+                                                           @"city" : tempDic2[@"city"],
+                                                           @"farmDescription" : tempDic2[@"farmDescription"],
+                                                           @"farmName" : tempDic2[@"farmName"],
+                                                           @"mainPhone" : tempDic2[@"mainPhone"],
+                                                           @"rating" : tempDic2[@"rating"],
+                                                           @"numReviews" :
+                                                               tempDic2[@"numReviews"],
+                                                           @"state" : tempDic2[@"state"],
+                                                           @"zip" : tempDic2[@"zip"],
+                                                           @"followerNotification" : tempDic2[@"followerNotification"],
+                                                           @"reviewNotification" : tempDic2[@"reviewNotification"],
+                                                           @"useChat" : tempDic2[@"useChat"], @"useEmail" : tempDic2[@"useEmail"],
+                                                           @"contactEmail" : tempDic2[@"contactEmail"],
+                                                           @"schedule" : schedule,
+                                                           @"activeLocation" : activeLocation, @"locations" : locations
+                                                           }];
+                    
+                    
                     
                 }
-                else
-                    schedule = [[NSDictionary alloc]init];
-                
-                if(!activeLocation)
-                    activeLocation = @"";
-                
-                [self.favoriteFarmersData addObject: @{
-                                                       @"farmerID" : key,
-                                                       @"address" : tempDic2[@"address"],
-                                                       @"city" : tempDic2[@"city"],
-                                                       @"farmDescription" : tempDic2[@"farmDescription"],
-                                                       @"farmName" : tempDic2[@"farmName"],
-                                                       @"mainPhone" : tempDic2[@"mainPhone"],
-                                                       @"rating" : tempDic2[@"rating"],
-                                                       @"numReviews" :
-                                                           tempDic2[@"numReviews"],
-                                                       @"state" : tempDic2[@"state"],
-                                                       @"zip" : tempDic2[@"zip"],
-                                                       @"followerNotification" : tempDic2[@"followerNotification"],
-                                                        @"reviewNotification" : tempDic2[@"reviewNotification"],
-                                                       @"useChat" : tempDic2[@"useChat"], @"useEmail" : tempDic2[@"useEmail"],
-                                                       @"contactEmail" : tempDic2[@"contactEmail"],
-                                                       @"schedule" : schedule,
-                                                       @"activeLocation" : activeLocation, @"locations" : locations
-                                                       }];
-                
-                
-                
-            }
-            [self checkFavoriteCounter];
-        }];
-        
+                [self checkFavoriteCounter];
+            }];
+            
+        }
     }
+   
+    
+    
+    
+    
+    
     
     
 }
@@ -2644,10 +2732,35 @@
             {
                 FIRDatabaseReference *notification = [userNotificationRef child:matchedKey];
                 [notification removeValue];
+                
+                //subtract 1 from app badge
+                
+                NSInteger badge = [UIApplication sharedApplication].applicationIconBadgeNumber - 1;
+                [[UIApplication sharedApplication]setApplicationIconBadgeNumber:badge];
+                
+                
             }
         }
         
     }];
+}
+
+-(void)addFacebookPostIDToProduct:(NSString *)productID withPostID:(NSString *)postID
+{
+    FIRDatabaseReference *product = [[[self.ref child:@"products"] child:productID] child:@"facebookPostID"];
+    
+   
+    
+    [product setValue:postID withCompletionBlock:^(NSError *error, FIRDatabaseReference *ref) {
+        
+        
+    }];
+    
+    
+    
+    
+    
+
 }
 
 @end
